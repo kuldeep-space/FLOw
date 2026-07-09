@@ -14,6 +14,27 @@ function getCommonSvgAttrs(data: any) {
   };
 }
 
+export function getPolygonConnectionPoints(vertices: Point[], baseDensity: number = 4) {
+  const points: Point[] = [];
+  for (let i = 0; i < vertices.length; i++) {
+    const p1 = vertices[i];
+    const p2 = vertices[(i + 1) % vertices.length];
+    
+    // Scale points by physical edge length (approx 1 point per 36px)
+    const edgeLength = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    const pointsForThisEdge = Math.max(1, Math.round((edgeLength / 36) * (baseDensity / 4)));
+    
+    for (let j = 0; j <= pointsForThisEdge; j++) {
+      const t = j / (pointsForThisEdge + 1);
+      points.push({
+        x: p1.x + (p2.x - p1.x) * t,
+        y: p1.y + (p2.y - p1.y) * t,
+      });
+    }
+  }
+  return points;
+}
+
 export const DiamondShape: ShapeDefinition = {
   type: "diamond",
   name: "Diamond",
@@ -49,12 +70,15 @@ export const DiamondShape: ShapeDefinition = {
     return getClosestPointOnPolygon({ x: px, y: py }, vertices);
   },
 
-  getConnectionPoints: (w, h) => [
-    { x: w / 2, y: 0 },
-    { x: w, y: h / 2 },
-    { x: w / 2, y: h },
-    { x: 0, y: h / 2 },
-  ],
+  getConnectionPoints: (w, h, density: number = 1) => {
+    const vertices = [
+      { x: w / 2, y: 0 },
+      { x: w, y: h / 2 },
+      { x: w / 2, y: h },
+      { x: 0, y: h / 2 },
+    ];
+    return getPolygonConnectionPoints(vertices, 4 * density);
+  },
 
   render: ({ width: w, height: h, data }: ShapeRenderProps) => {
     return (
@@ -107,12 +131,14 @@ export const TriangleShape: ShapeDefinition = {
     return getClosestPointOnPolygon({ x: px, y: py }, vertices);
   },
 
-  getConnectionPoints: (w, h) => [
-    { x: w / 2, y: 0 },
-    { x: w * 0.75, y: h / 2 },
-    { x: w / 2, y: h },
-    { x: w * 0.25, y: h / 2 },
-  ],
+  getConnectionPoints: (w, h, density: number = 1) => {
+    const vertices = [
+      { x: w / 2, y: 0 },
+      { x: w, y: h },
+      { x: 0, y: h },
+    ];
+    return getPolygonConnectionPoints(vertices, 4 * density);
+  },
 
   render: ({ width: w, height: h, data }: ShapeRenderProps) => {
     return (
@@ -167,12 +193,18 @@ export const HexagonShape: ShapeDefinition = {
     return getClosestPointOnPolygon({ x: px, y: py }, vertices);
   },
 
-  getConnectionPoints: (w, h) => [
-    { x: w / 2, y: 0 },
-    { x: w, y: h / 2 },
-    { x: w / 2, y: h },
-    { x: 0, y: h / 2 },
-  ],
+  getConnectionPoints: (w, h, density: number = 1) => {
+    const q = w * 0.2;
+    const vertices = [
+      { x: q, y: 0 },
+      { x: w - q, y: 0 },
+      { x: w, y: h / 2 },
+      { x: w - q, y: h },
+      { x: q, y: h },
+      { x: 0, y: h / 2 },
+    ];
+    return getPolygonConnectionPoints(vertices, 4 * density);
+  },
 
   render: ({ width: w, height: h, data }: ShapeRenderProps) => {
     const q = w * 0.2;
@@ -205,6 +237,16 @@ export const PentagonShape: ShapeDefinition = {
       { x: 0, y: h * 0.4 },
     ];
     return getClosestPointOnPolygon({ x: px, y: py }, vertices);
+  },
+  getConnectionPoints: (w, h, density: number = 1) => {
+    const vertices = [
+      { x: w / 2, y: 0 },
+      { x: w, y: h * 0.4 },
+      { x: w * 0.8, y: h },
+      { x: w * 0.2, y: h },
+      { x: 0, y: h * 0.4 },
+    ];
+    return getPolygonConnectionPoints(vertices, 4 * density);
   },
   getTextArea: (w, h) => {
     return { x: w * 0.2, y: h * 0.3, width: w * 0.6, height: h * 0.6 };
@@ -267,8 +309,8 @@ export const StarShape: ShapeDefinition = {
     const vertices = getStarPoints(w, h);
     return getClosestPointOnPolygon({ x: px, y: py }, vertices);
   },
-  getConnectionPoints: (w, h) => {
-    return getStarPoints(w, h).filter((_, i) => i % 2 === 0);
+  getConnectionPoints: (w, h, density: number = 1) => {
+    return getPolygonConnectionPoints(getStarPoints(w, h), 4 * density);
   },
   render: ({ width: w, height: h, data }: ShapeRenderProps) => {
     const pts = getStarPoints(w, h).map((p) => `${p.x},${p.y}`).join(" ");
@@ -302,6 +344,15 @@ export const CylinderShape: ShapeDefinition = {
       { x: 0, y: h },
     ];
     return getClosestPointOnPolygon({ x: px, y: py }, vertices);
+  },
+  getConnectionPoints: (w, h, density: number = 1) => {
+    const vertices = [
+      { x: 0, y: 0 },
+      { x: w, y: 0 },
+      { x: w, y: h },
+      { x: 0, y: h },
+    ];
+    return getPolygonConnectionPoints(vertices, 4 * density);
   },
   render: ({ width: w, height: h, data }: ShapeRenderProps) => {
     const ry = Math.min(h * 0.12, 18);
@@ -344,6 +395,16 @@ export const ParallelogramShape: ShapeDefinition = {
       { x: 0, y: h },
     ];
     return getClosestPointOnPolygon({ x: px, y: py }, vertices);
+  },
+  getConnectionPoints: (w, h, density: number = 1) => {
+    const s = w * 0.15;
+    const vertices = [
+      { x: s, y: 0 },
+      { x: w, y: 0 },
+      { x: w - s, y: h },
+      { x: 0, y: h },
+    ];
+    return getPolygonConnectionPoints(vertices, 4 * density);
   },
   render: ({ width: w, height: h, data }: ShapeRenderProps) => {
     const s = w * 0.15;

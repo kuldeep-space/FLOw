@@ -33,12 +33,20 @@ export const RectangleShape: ShapeDefinition = {
     return getClosestPointOnPolygon({ x: px, y: py }, vertices);
   },
 
-  getConnectionPoints: (w, h) => [
-    { x: w / 2, y: 0 }, // Top
-    { x: w, y: h / 2 }, // Right
-    { x: w / 2, y: h }, // Bottom
-    { x: 0, y: h / 2 }, // Left
-  ],
+  getConnectionPoints: (w, h, density: number = 1) => {
+    const points: Point[] = [];
+    const ptsX = Math.max(1, Math.round((w / 36) * density));
+    const ptsY = Math.max(1, Math.round((h / 36) * density));
+    // Top (Left to Right, includes Top-Left corner)
+    for (let i = 0; i <= ptsX; i++) points.push({ x: (w * i) / (ptsX + 1), y: 0 });
+    // Right (Top to Bottom, includes Top-Right corner)
+    for (let i = 0; i <= ptsY; i++) points.push({ x: w, y: (h * i) / (ptsY + 1) });
+    // Bottom (Right to Left, includes Bottom-Right corner)
+    for (let i = ptsX + 1; i >= 1; i--) points.push({ x: (w * i) / (ptsX + 1), y: h });
+    // Left (Bottom to Top, includes Bottom-Left corner)
+    for (let i = ptsY + 1; i >= 1; i--) points.push({ x: 0, y: (h * i) / (ptsY + 1) });
+    return points;
+  },
 
   render: ({ width, height, data }: ShapeRenderProps) => {
     return (
@@ -111,12 +119,19 @@ export const EllipseShape: ShapeDefinition = {
     return { x: cx + rx * Math.cos(angle), y: cy + ry * Math.sin(angle) };
   },
 
-  getConnectionPoints: (w, h) => [
-    { x: w / 2, y: 0 },
-    { x: w, y: h / 2 },
-    { x: w / 2, y: h },
-    { x: 0, y: h / 2 },
-  ],
+  getConnectionPoints: (w, h, density: number = 1) => {
+    const points: Point[] = [];
+    const circumference = Math.PI * Math.sqrt(2 * ((w/2)**2 + (h/2)**2));
+    const numPoints = Math.max(8, Math.round((circumference / 36) * density));
+    for (let i = 0; i < numPoints; i++) {
+      const angle = (i * 2 * Math.PI) / numPoints;
+      points.push({
+        x: w / 2 + (w / 2) * Math.cos(angle),
+        y: h / 2 + (h / 2) * Math.sin(angle),
+      });
+    }
+    return points;
+  },
 
   render: ({ width, height, data }: ShapeRenderProps) => {
     return (

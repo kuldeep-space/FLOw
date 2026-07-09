@@ -8,7 +8,6 @@ import { RightPanel } from "./RightPanel";
 import { LayersPanel } from "./LayersPanel";
 import { SearchPalette } from "./SearchPalette";
 import { Presentation } from "./Presentation";
-import { FloatingToolbar } from "./FloatingToolbar";
 import { useEditor, type Tool } from "./store";
 import {
   exportPNG,
@@ -237,7 +236,6 @@ function EditorInner() {
         }}
       />
       <Canvas />
-      <FloatingToolbar />
 
       {!presenting && (
         <>

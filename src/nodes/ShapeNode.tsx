@@ -7,7 +7,7 @@ import {
   useUpdateNodeInternals,
   type NodeProps,
 } from "@xyflow/react";
-import { Copy, Plus, MessageSquare, Trash2 } from "lucide-react";
+import { Copy, Plus, MessageSquare, Trash2, RotateCw } from "lucide-react";
 import type { ShapeNode as SN } from "@/features/editor/store";
 import { useEditor, isConnectorTool } from "@/features/editor/store";
 import { ShapeRegistry } from "@/features/editor/shapes";
@@ -18,13 +18,14 @@ function ShapeNodeInner({ id, data, selected, width, height }: NodeProps<SN>) {
   const h = height ?? 100;
   const updateShape = useEditor((s) => s.updateShape);
   const pushHistory = useEditor((s) => s.pushHistory);
-  const magneticSnap = useEditor((s) => s.magneticSnap);
   const presenting = useEditor((s) => s.presenting);
   const activeTool = useEditor((s) => s.activeTool);
   const pendingConnect = useEditor((s) => s.pendingConnectSource);
   const isConnecting = useEditor((s) => s.isConnecting);
   const setPendingConnectSource = useEditor((s) => s.setPendingConnectSource);
   const duplicateSelected = useEditor((s) => s.duplicateSelected);
+  const magneticSnapPoint = useEditor((s) => s.magneticSnapPoint);
+  const magneticSnapEnabled = useEditor((s) => s.magneticSnap);
   const deleteSelected = useEditor((s) => s.deleteSelected);
   const setSelectedNodes = useEditor((s) => s.setSelectedNodes);
   const updateInternals = useUpdateNodeInternals();
@@ -124,55 +125,70 @@ function ShapeNodeInner({ id, data, selected, width, height }: NodeProps<SN>) {
           minWidth={40}
           minHeight={24}
           handleStyle={{
-            width: 8,
-            height: 8,
+            width: 9,
+            height: 9,
             borderRadius: 2,
             background: "#ffffff",
             border: "1.5px solid #0ea5e9",
           }}
           lineStyle={{
-            borderColor: "#0ea5e9",
-            borderWidth: 1.5,
-            borderStyle: "solid",
+            borderColor: "transparent",
           }}
           onResizeStart={() => useEditor.getState().setIsResizing(true)}
           onResizeEnd={() => useEditor.getState().setIsResizing(false)}
         />
       )}
 
-      {/* Rotation handle (visual only for now; use inspector for precise angle) */}
-      {selected && !presenting && !data.locked && !isDraw && (
-        <div
-          className="pointer-events-auto absolute -top-8 left-1/2 flex h-5 w-5 -translate-x-1/2 cursor-grab items-center justify-center rounded-full border-[1.5px] border-[#0ea5e9] bg-background shadow-sm hover:scale-110 transition-transform"
-          title="Rotate (use Inspector › Rotation)"
-          onMouseDown={(e) => {
-            e.stopPropagation();
-            // Simple drag-to-rotate around center
-            const rect = (
-              e.currentTarget.parentElement as HTMLElement
-            ).getBoundingClientRect();
-            const cx = rect.left + rect.width / 2;
-            const cy = rect.top + rect.height / 2;
-            const startX = e.clientX;
-            const startY = e.clientY;
-            const start = Math.atan2(startY - cy, startX - cx);
-            const startRot = data.rotation || 0;
-            pushHistory();
+      {/* Explicit Selection Bounding Box */}
+      {selected && !presenting && !isDraw && !data.locked && (
+        <div className="pointer-events-none absolute -inset-[1.5px] border-[1.5px] border-[#0ea5e9] z-40" />
+      )}
 
-            const move = (ev: MouseEvent) => {
-              const cur = Math.atan2(ev.clientY - cy, ev.clientX - cx);
-              const deg = ((cur - start) * 180) / Math.PI;
-              updateShape(id, { rotation: Math.round(startRot + deg) });
-            };
-            const up = () => {
-              window.removeEventListener("mousemove", move);
-              window.removeEventListener("mouseup", up);
-            };
-            window.addEventListener("mousemove", move);
-            window.addEventListener("mouseup", up);
-          }}
-        >
-          <div className="h-1.5 w-1.5 rounded-full bg-[#0ea5e9]" />
+      {/* Rotation handle */}
+      {selected && !presenting && !data.locked && !isDraw && (
+        <div className="nodrag nopan absolute -top-10 left-1/2 -translate-x-1/2 flex flex-col items-center z-50">
+          <div
+            className="pointer-events-auto flex h-7 w-7 cursor-grab active:cursor-grabbing items-center justify-center rounded-full border-2 border-white bg-[#0ea5e9] shadow-md hover:scale-110 transition-all text-white"
+            title="Rotate (Hold Shift to snap to 15°)"
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              const el = e.currentTarget;
+              el.setPointerCapture(e.pointerId);
+
+              const rect = (el.parentElement?.parentElement as HTMLElement).getBoundingClientRect();
+              const cx = rect.left + rect.width / 2;
+              const cy = rect.top + rect.height / 2;
+              const startX = e.clientX;
+              const startY = e.clientY;
+              const start = Math.atan2(startY - cy, startX - cx);
+              const startRot = data.rotation || 0;
+              pushHistory();
+
+              const move = (ev: PointerEvent) => {
+                const cur = Math.atan2(ev.clientY - cy, ev.clientX - cx);
+                let deg = ((cur - start) * 180) / Math.PI;
+                let newRot = startRot + deg;
+                
+                if (ev.shiftKey) {
+                  newRot = Math.round(newRot / 15) * 15;
+                }
+                
+                updateShape(id, { rotation: Math.round(newRot) });
+              };
+              
+              const up = (ev: PointerEvent) => {
+                el.releasePointerCapture(ev.pointerId);
+                el.removeEventListener("pointermove", move);
+                el.removeEventListener("pointerup", up);
+              };
+              
+              el.addEventListener("pointermove", move);
+              el.addEventListener("pointerup", up);
+            }}
+          >
+            <RotateCw size={14} strokeWidth={2.5} />
+          </div>
+          <div className="w-[1.5px] h-3 bg-[#0ea5e9]" />
         </div>
       )}
 
@@ -265,172 +281,84 @@ function ShapeNodeInner({ id, data, selected, width, height }: NodeProps<SN>) {
             </span>
           )}
         </div>
-      )}
+      )}      {/* Hover quick-actions removed, moved to context menu below */}
 
-      {/* Hover quick-actions (fade-in) */}
-      {!presenting &&
-        !selected &&
-        hovered &&
-        !data.locked &&
-        !isConnectorMode && (
-          <div
-            className="pointer-events-auto absolute -right-9 top-1/2 flex -translate-y-1/2 flex-col gap-1 rounded-lg border border-[var(--hairline)] bg-[color-mix(in_oklab,var(--surface-elevated)_90%,transparent)] p-1 opacity-0 shadow-lg backdrop-blur transition-opacity animate-fade-in"
-            style={{ opacity: 1 }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <button
-              className="tool-btn !h-6 !w-6"
-              title="Connect from here"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedNodes([id]);
-                setPendingConnectSource({ nodeId: id });
-                useEditor.getState().setActiveTool("arrow");
-              }}
-            >
-              <Plus size={12} />
-            </button>
-            <button
-              className="tool-btn !h-6 !w-6"
-              title="Duplicate"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedNodes([id]);
-                duplicateSelected();
-              }}
-            >
-              <Copy size={12} />
-            </button>
-            <button
-              className="tool-btn !h-6 !w-6"
-              title="Comment (Inspector › Label)"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedNodes([id]);
-              }}
-            >
-              <MessageSquare size={12} />
-            </button>
-            <button
-              className="tool-btn !h-6 !w-6 hover:!bg-red-500/20 hover:!text-red-400"
-              title="Delete"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedNodes([id]);
-                deleteSelected();
-              }}
-            >
-              <Trash2 size={12} />
-            </button>
-          </div>
-        )}
-
-      {!presenting &&
-        magneticSnap &&
-        !isDraw &&
-        !isImage &&
-        (isConnectorMode || isConnecting) && (
-          <div style={{ pointerEvents: "none" }}>
-            {(() => {
-              const insetPoint = (
-                pt: { x: number; y: number },
-                amount: number,
-              ) => {
-                const cx = w / 2;
-                const cy = h / 2;
-                const vx = pt.x - cx;
-                const vy = pt.y - cy;
-                const len = Math.hypot(vx, vy);
-                if (len === 0) return pt;
-                const newLen = Math.max(0, len - amount);
-                return {
-                  x: cx + (vx * newLen) / len,
-                  y: cy + (vy * newLen) / len,
-                };
-              };
-
-              const fixedPoints = shapeDef
-                .getConnectionPoints(w, h)
-                .map((p) => insetPoint(p, 4));
-
-              let activePt = null;
-              if (localMouse) {
-                // Check if close to a fixed point
-                let minD = Infinity;
-                let closestFixed = null;
-                for (const fp of fixedPoints) {
-                  const d = Math.hypot(
-                    fp.x - localMouse.x,
-                    fp.y - localMouse.y,
-                  );
-                  if (d < 30 && d < minD) {
-                    minD = d;
-                    closestFixed = fp;
-                  }
-                }
-                activePt =
-                  closestFixed ||
-                  insetPoint(
-                    shapeDef.getClosestPoint(w, h, localMouse.x, localMouse.y),
-                    4,
-                  );
+      {/* Visible X connection points (always visible) */}
+      {!presenting && !isDraw && (
+        <div style={{ pointerEvents: "none" }} className="absolute inset-0 z-20">
+          {(() => {
+            const pts = shapeDef.getConnectionPoints(w, h);
+            const snappedIndex = magneticSnapPoint?.nodeId === id ? magneticSnapPoint.pointIndex : -1;
+            
+            return pts.map((p, i) => {
+              const isGlow = snappedIndex === i;
+              let isNeighbor = false;
+              if (snappedIndex !== undefined && snappedIndex !== -1) {
+                const diff = Math.abs(i - snappedIndex);
+                isNeighbor = diff === 1 || diff === pts.length - 1;
+              }
+              
+              const strokeWidth = data.strokeWidth || 3;
+              const inset = strokeWidth / 2;
+              const cx = w / 2;
+              const cy = h / 2;
+              const dx = p.x - cx;
+              const dy = p.y - cy;
+              const dist = Math.hypot(dx, dy);
+              
+              let dotX = p.x;
+              let dotY = p.y;
+              if (dist > 0) {
+                dotX = cx + (dx / dist) * (dist - inset);
+                dotY = cy + (dy / dist) * (dist - inset);
               }
 
               return (
-                <>
-                  {/* Render fixed points */}
-                  {fixedPoints.map((fp, i) => (
+                <div key={i}>
+                  {magneticSnapEnabled && (isGlow || isNeighbor) && (
                     <div
-                      key={i}
-                      className="absolute z-10 flex h-4 w-4 -ml-2 -mt-2 items-center justify-center rounded-full pointer-events-auto"
-                      style={{ left: fp.x, top: fp.y }}
+                      className={`absolute flex items-center justify-center transition-all duration-200 ${isGlow ? "scale-150 z-30" : "z-20 opacity-50 scale-75 blur-[0.5px]"}`}
+                      style={{ left: dotX, top: dotY, width: 12, height: 12, marginLeft: -6, marginTop: -6 }}
                     >
-                      <div className="h-1 w-1 rounded-full bg-primary/40 shadow-sm" />
-                    </div>
-                  ))}
-
-                  {/* Render active sliding/snapped point */}
-                  {activePt && (
-                    <div
-                      className="absolute z-20 flex h-6 w-6 -ml-3 -mt-3 items-center justify-center rounded-full transition-transform hover:scale-125 cursor-crosshair pointer-events-auto"
-                      style={{ left: activePt.x, top: activePt.y }}
-                    >
-                      <div className="h-2 w-2 rounded-full border border-[var(--color-primary)] bg-[var(--color-background)] shadow-sm" />
-                      <Handle
-                        id={`anchor-dynamic`}
-                        type="source"
-                        position={Position.Bottom}
-                        isConnectable={!data.locked}
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          width: "100%",
-                          height: "100%",
-                          opacity: 0,
-                          border: "none",
-                        }}
-                      />
-                      <Handle
-                        id={`anchor-dynamic`}
-                        type="target"
-                        position={Position.Bottom}
-                        isConnectable={!data.locked}
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          width: "100%",
-                          height: "100%",
-                          opacity: 0,
-                          border: "none",
-                        }}
-                      />
+                      <div className={`w-2.5 h-2.5 rounded-full border-[1.5px] border-white shadow-sm transition-colors ${isGlow ? "bg-cyan-400 border-cyan-100 shadow-[0_0_8px_rgba(34,211,238,0.8)]" : "bg-primary"}`} />
                     </div>
                   )}
-                </>
+                  {/* Specific handles to satisfy React Flow edge connection */}
+                  <Handle
+                    id={`point-${i}`}
+                    type="source"
+                    position={Position.Top}
+                    className="opacity-0"
+                    style={{ position: "absolute", left: p.x, top: p.y, pointerEvents: "none" }}
+                  />
+                  <Handle
+                    id={`point-${i}`}
+                    type="target"
+                    position={Position.Top}
+                    className="opacity-0"
+                    style={{ position: "absolute", left: p.x, top: p.y, pointerEvents: "none" }}
+                  />
+                </div>
               );
-            })()}
-          </div>
-        )}
+            });
+          })()}
+        </div>
+      )}
+
+
+      {/* Invisible Handles to satisfy React Flow */}
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="opacity-0"
+        style={{ position: "absolute", left: "50%", top: "50%", pointerEvents: "none" }}
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="opacity-0"
+        style={{ position: "absolute", left: "50%", top: "50%", pointerEvents: "none" }}
+      />
 
       {/* Suppress unused warning */}
       {isText ? null : null}

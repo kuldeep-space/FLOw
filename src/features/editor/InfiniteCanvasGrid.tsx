@@ -66,13 +66,14 @@ export function InfiniteCanvasGrid() {
     const isDark = theme === "dark";
 
     // 1. Grid level opacities
-    let microFade = smoothstep(0.8, 1.0, zoom);
-    let minorFade = smoothstep(0.25, 0.45, zoom);
-    let majorFade = smoothstep(0.08, 0.25, zoom);
+    let microFade = smoothstep(0.7, 1.0, zoom);
+    let minorFade = smoothstep(0.2, 0.35, zoom);
+    let majorFade = smoothstep(0.05, 0.15, zoom);
+    let macroFade = smoothstep(0.01, 0.04, zoom);
 
-    // Dynamic scale reduction for low zooms on major grid
-    if (zoom < 0.08) {
-      majorFade = 0;
+    // Dynamic scale reduction for extreme low zooms
+    if (zoom < 0.01) {
+      macroFade = 0;
     }
 
     // 2. Global modifiers
@@ -87,7 +88,7 @@ export function InfiniteCanvasGrid() {
 
     // Fade in presentation mode
     if (presenting) {
-      globalMultiplier *= 0.15; // fade grid to almost invisible
+      globalMultiplier *= 0.15;
     }
 
     // Node density fading: fade grid when there are many objects
@@ -95,18 +96,19 @@ export function InfiniteCanvasGrid() {
     globalMultiplier *= nodeDensityFade;
 
     // Grid color bases
-    const majorBaseOpacity = isDark ? 0.085 : 0.075;
-    const minorBaseOpacity = isDark ? 0.035 : 0.032;
-    const microBaseOpacity = isDark ? 0.015 : 0.012;
+    const majorBaseOpacity = isDark ? 0.1 : 0.08;
+    const minorBaseOpacity = isDark ? 0.04 : 0.035;
+    const microBaseOpacity = isDark ? 0.02 : 0.015;
 
     const gridColorBase = isDark ? "255, 255, 255" : "0, 0, 0";
 
+    const macroOpacity = majorBaseOpacity * macroFade * globalMultiplier;
     const majorOpacity = majorBaseOpacity * majorFade * globalMultiplier;
     const minorOpacity = minorBaseOpacity * minorFade * globalMultiplier;
     const microOpacity = microBaseOpacity * microFade * globalMultiplier;
 
     // Origin axis opacity (center lines X=0 and Y=0)
-    const originBaseOpacity = isDark ? 0.35 : 0.30;
+    const originBaseOpacity = isDark ? 0.15 : 0.1;
     const originOpacity = originBaseOpacity * globalMultiplier;
 
     // Render helper function for pixel-perfect lines
@@ -143,16 +145,18 @@ export function InfiniteCanvasGrid() {
       ctx.stroke();
     };
 
-    // Draw grid levels in ascending order of visibility/hierarchy (Micro -> Minor -> Major)
-    // 3. Micro Grid (8px spacing)
-    drawGridLevel(8, microOpacity, 1.0);
+    // Draw grid levels in ascending order of visibility/hierarchy
+    // 3. Micro Grid (10px spacing)
+    drawGridLevel(10, microOpacity, 1.0);
 
-    // 4. Minor Grid (32px spacing)
-    drawGridLevel(32, minorOpacity, 1.0);
+    // 4. Minor Grid (50px spacing)
+    drawGridLevel(50, minorOpacity, 1.0);
 
-    // 5. Major Grid (160px spacing)
-    drawGridLevel(160, majorOpacity, 1.5);
+    // 5. Major Grid (250px spacing)
+    drawGridLevel(250, majorOpacity, 1.5);
 
+    // 6. Macro Grid (1250px spacing)
+    drawGridLevel(1250, macroOpacity, 2.0);
     // 6. Origin Axis (X=0, Y=0)
     if (originOpacity > 0.001) {
       ctx.strokeStyle = `rgba(${gridColorBase}, ${originOpacity})`;

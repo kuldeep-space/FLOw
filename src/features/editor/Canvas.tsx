@@ -25,6 +25,8 @@ import { useEditor, isConnectorTool, type FlowEdge, applyEdgeStyle, CONNECTOR_TO
 import { InteractionManager } from "./connector-engine";
 import { getFreehandPath } from "./freehand";
 import { ShapeNode } from "@/nodes/ShapeNode";
+import { ShapeRegistry } from "@/features/editor/shapes";
+import { getClosestPointOnShape } from "./shapeMath";
 import { InfiniteCanvasGrid } from "./InfiniteCanvasGrid";
 import { AnchorNode } from "@/nodes/AnchorNode";
 import { SmartEdge } from "@/edges/SmartEdge";
@@ -459,9 +461,76 @@ function CanvasInner() {
       }
 
       if (draftConnector) {
+        let currentPos = pos;
+        const storeNodes = useEditor.getState().nodes;
+        let closestPoint: { nodeId: string; pointIndex?: number; x?: number; y?: number; customPos?: { x: number; y: number; pctX: number; pctY: number } } | null = null;
+        let minDist = 24; // 24px configured border snap distance
+        const isMagneticSnap = useEditor.getState().magneticSnap;
+
+        if (isMagneticSnap) {
+          for (const n of storeNodes) {
+            if (n.type === "anchor") continue;
+            const nw = n.measured?.width ?? (n.data as any)?.width ?? 180;
+            const nh = n.measured?.height ?? (n.data as any)?.height ?? 100;
+            const shapeDef = ShapeRegistry.get((n.data as any)?.kind) ?? ShapeRegistry.get("rectangle");
+            if (shapeDef) {
+              const pts = shapeDef.getConnectionPoints(nw, nh);
+              pts.forEach((pt, i) => {
+                const gx = n.position.x + pt.x;
+                const gy = n.position.y + pt.y;
+                const dist = Math.hypot(pos.x - gx, pos.y - gy);
+                if (dist < minDist) {
+                  minDist = dist;
+                  closestPoint = { nodeId: n.id, pointIndex: i, x: gx, y: gy };
+                }
+              });
+            }
+          }
+        } else {
+          for (const n of storeNodes) {
+            if (n.type === "anchor") continue;
+            const nw = n.measured?.width ?? (n.data as any)?.width ?? 180;
+            const nh = n.measured?.height ?? (n.data as any)?.height ?? 100;
+            const kind = (n.data as any)?.kind || "rectangle";
+            
+            if (pos.x >= n.position.x - 24 && pos.x <= n.position.x + nw + 24 &&
+                pos.y >= n.position.y - 24 && pos.y <= n.position.y + nh + 24) {
+                
+                const localX = pos.x - n.position.x;
+                const localY = pos.y - n.position.y;
+                const p = getClosestPointOnShape(kind, nw, nh, localX, localY);
+                
+                let dist = Math.hypot(localX - p.x, localY - p.y);
+                
+                if (localX >= 0 && localX <= nw && localY >= 0 && localY <= nh) {
+                    dist = 0;
+                }
+                
+                if (dist < minDist) {
+                   minDist = dist;
+                   const pctX = p.x / nw;
+                   const pctY = p.y / nh;
+                   closestPoint = { nodeId: n.id, customPos: { x: p.x + n.position.x, y: p.y + n.position.y, pctX, pctY } };
+                }
+            }
+          }
+        }
+
+        if (closestPoint) {
+          if (isMagneticSnap) {
+            currentPos = { x: closestPoint.x!, y: closestPoint.y! };
+            useEditor.getState().setMagneticSnapPoint({ nodeId: closestPoint.nodeId, pointIndex: closestPoint.pointIndex });
+          } else {
+            currentPos = { x: closestPoint.customPos!.x, y: closestPoint.customPos!.y };
+            useEditor.getState().setMagneticSnapPoint({ nodeId: closestPoint.nodeId, customPos: closestPoint.customPos });
+          }
+        } else {
+          useEditor.getState().setMagneticSnapPoint(null);
+        }
+
         useEditor.setState((s) => ({
           nodes: s.nodes.map((n) =>
-            n.id === draftConnector.targetId ? { ...n, position: pos } : n,
+            n.id === draftConnector.targetId ? { ...n, position: currentPos } : n,
           ),
         }));
         return;
@@ -530,38 +599,69 @@ function CanvasInner() {
 
       if (draftConnector) {
         const state = useEditor.getState();
-        const targetPos = state.nodes.find(
-          (n) => n.id === draftConnector.targetId,
-        )?.position;
+        const snapPoint = state.magneticSnapPoint;
+        state.setMagneticSnapPoint(null);
+        
         let snappedNodeId = null;
+        let snappedPointIndex = undefined;
+        let snappedCustomTarget = undefined;
 
-        if (targetPos) {
-          const hitNode = state.nodes.find((n) => {
-            if (n.type === "anchor" || n.id === draftConnector.sourceId)
-              return false;
-            const nw = n.measured?.width ?? (n.data as any)?.width ?? 180;
-            const nh = n.measured?.height ?? (n.data as any)?.height ?? 100;
-            return (
-              targetPos.x >= n.position.x &&
-              targetPos.x <= n.position.x + nw &&
-              targetPos.y >= n.position.y &&
-              targetPos.y <= n.position.y + nh
-            );
-          });
-          if (hitNode) snappedNodeId = hitNode.id;
+        if (snapPoint) {
+            snappedNodeId = snapPoint.nodeId;
+            if (state.magneticSnap) {
+              snappedPointIndex = snapPoint.pointIndex;
+            } else if (snapPoint.customPos) {
+              snappedCustomTarget = { pctX: snapPoint.customPos.pctX, pctY: snapPoint.customPos.pctY };
+            }
+        } else {
+            const targetPos = state.nodes.find(
+              (n) => n.id === draftConnector.targetId,
+            )?.position;
+
+            if (targetPos) {
+              const hitNode = state.nodes.find((n) => {
+                if (n.type === "anchor" || n.id === draftConnector.sourceId)
+                  return false;
+                const nw = n.measured?.width ?? (n.data as any)?.width ?? 180;
+                const nh = n.measured?.height ?? (n.data as any)?.height ?? 100;
+                return (
+                  targetPos.x >= n.position.x - 24 &&
+                  targetPos.x <= n.position.x + nw + 24 &&
+                  targetPos.y >= n.position.y - 24 &&
+                  targetPos.y <= n.position.y + nh + 24
+                );
+              });
+              if (hitNode) snappedNodeId = hitNode.id;
+            }
         }
 
         if (snappedNodeId) {
           const edgeId = state.edges.find(
             (e) => e.target === draftConnector.targetId,
           )?.id;
-          state.pushHistory();
-          useEditor.setState((s) => ({
-            nodes: s.nodes.filter((n) => n.id !== draftConnector.targetId),
-            edges: s.edges.map((e) =>
-              e.id === edgeId ? applyEdgeStyle({ ...e, target: snappedNodeId }) : e,
-            ),
-          }));
+          if (edgeId) {
+            let targetHandle = undefined;
+            if (snappedPointIndex !== undefined) {
+               targetHandle = `point-${snappedPointIndex}`;
+            }
+            
+            state.pushHistory();
+            useEditor.setState((s) => {
+              const edge = s.edges.find(e => e.id === edgeId);
+              const customTarget = snappedCustomTarget ? { customTarget: snappedCustomTarget } : {};
+              return {
+                nodes: s.nodes.filter((n) => n.id !== draftConnector.targetId),
+                edges: s.edges.map((e) =>
+                  e.id === edgeId ? applyEdgeStyle({ 
+                    ...e, 
+                    target: snappedNodeId, 
+                    targetHandle,
+                    data: { ...e.data, ...customTarget }
+                  }) : e,
+                ),
+              };
+            });
+          }
         } else {
           state.pushHistory();
         }
@@ -679,8 +779,16 @@ function CanvasInner() {
         onPaneClick={onPaneClick}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
-        onNodeContextMenu={(e, n: Node) => onContextMenu(e, { nodeId: n.id })}
-        onEdgeContextMenu={(e, ed: Edge) => onContextMenu(e, { edgeId: ed.id })}
+        onNodeContextMenu={(e, node) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onContextMenu(e as any, { nodeId: node.id });
+        }}
+        onEdgeContextMenu={(e, edge) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onContextMenu(e as any, { edgeId: edge.id });
+        }}
         onPaneContextMenu={(e) =>
           onContextMenu(e as unknown as React.MouseEvent)
         }

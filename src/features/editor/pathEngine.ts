@@ -13,6 +13,41 @@ function getMidpoint(p1: Point, p2: Point): Point {
 }
 
 /**
+ * Calculates the true center point along a polyline.
+ */
+export function getPolylineCenter(points: Point[]): Point {
+  if (points.length === 0) return { x: 0, y: 0 };
+  if (points.length === 1) return points[0];
+
+  let totalLength = 0;
+  const segments = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    segments.push({ p1, p2, len });
+    totalLength += len;
+  }
+
+  const targetLength = totalLength / 2;
+  let currentLength = 0;
+
+  for (const seg of segments) {
+    if (currentLength + seg.len >= targetLength) {
+      const remaining = targetLength - currentLength;
+      const t = seg.len === 0 ? 0.5 : remaining / seg.len;
+      return {
+        x: seg.p1.x + (seg.p2.x - seg.p1.x) * t,
+        y: seg.p1.y + (seg.p2.y - seg.p1.y) * t,
+      };
+    }
+    currentLength += seg.len;
+  }
+  
+  return points[points.length - 1];
+}
+
+/**
  * Generates a straight polyline through all points.
  */
 export function getStraightPath(points: Point[]): PathResult {

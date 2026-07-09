@@ -314,9 +314,7 @@
 }
 
 .react-flow__node.selected .shape-body:not(.is-draw) {
-  box-shadow:
-    0 0 0 1.5px var(--color-primary),
-    0 0 0 4px color-mix(in oklab, var(--color-primary) 12%, transparent);
+  /* Selection styling handled by ShapeNode */
 }
 
 .shape-node.is-pending-source .shape-body {

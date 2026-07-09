@@ -62,7 +62,7 @@ export interface ShapeDefinition {
   ) => Point;
 
   /** Returns the fixed cardinal connection points (usually 4 or 8) for rigid connector routing */
-  getConnectionPoints: (width: number, height: number) => Point[];
+  getConnectionPoints: (width: number, height: number, density?: number) => Point[];
 
   // Rendering
   /** Renders the visual shape. Must NOT include the wrapper, text, or selection logic, only the shape itself. */

@@ -103,7 +103,9 @@ interface EditorState {
   isDragging: boolean;
   isResizing: boolean;
   snapGridSize: number;
+  magneticSnapPoint: { nodeId: string; pointIndex?: number; customPos?: { x: number; y: number; pctX: number; pctY: number } } | null;
 
+  setMagneticSnapPoint: (p: { nodeId: string; pointIndex?: number; customPos?: { x: number; y: number; pctX: number; pctY: number } } | null) => void;
   setIsDragging: (v: boolean) => void;
   setIsResizing: (v: boolean) => void;
   setInteractionState: (state: InteractionState) => void;
@@ -371,7 +373,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   activeTool: "select",
   edgeKind: "smoothstep",
   edgeAnimated: false,
-  magneticSnap: true,
+  magneticSnap: false,
   showGrid: true,
   gridSnap: false,
   theme: "dark",
@@ -399,8 +401,10 @@ export const useEditor = create<EditorState>((set, get) => ({
   interactionState: "IDLE",
   isDragging: false,
   isResizing: false,
-  snapGridSize: 8,
+  snapGridSize: 15,
+  magneticSnapPoint: null,
 
+  setMagneticSnapPoint: (p) => set({ magneticSnapPoint: p }),
   setNodes: (nodes) => set({ nodes, isDirty: true }),
   setEdges: (edges) => set({ edges, isDirty: true }),
   onNodesChange: (changes) =>

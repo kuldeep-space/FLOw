@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useLayoutEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Copy,
@@ -12,8 +12,69 @@ import {
   BringToFront,
   SendToBack,
   ChevronRight,
+  Plus,
+  MessageSquare,
+  Palette,
+  Paintbrush,
+  Type,
 } from "lucide-react";
 import { useEditor } from "./store";
+
+const SWATCH_COLORS = [
+  "#a78bfa",
+  "#60a5fa",
+  "#22d3ee",
+  "#34d399",
+  "#fbbf24",
+  "#fb7185",
+  "#f472b6",
+  "#e4e4e7",
+];
+
+function ColorRow({ title, value, onChange, icon: Icon, openLeft }: { title: string, value: string, onChange: (c: string) => void, icon?: any, openLeft?: boolean }) {
+  const [open, setOpen] = useState(false);
+  
+  return (
+    <div 
+      className="relative flex items-center gap-2 px-2 py-1.5 hover:bg-[var(--color-accent)] cursor-pointer rounded-md transition-colors w-full text-left"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      {Icon && <Icon size={13} />}
+      <span className="flex-1 text-[12px]">{title}</span>
+      <ChevronRight size={13} className="text-muted-foreground" />
+      
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, x: openLeft ? 5 : -5, y: "-50%" }}
+            animate={{ opacity: 1, x: 0, y: "-50%" }}
+            exit={{ opacity: 0, x: openLeft ? 5 : -5, y: "-50%" }}
+            transition={{ duration: 0.1 }}
+            className={`absolute ${openLeft ? "right-full mr-1" : "left-full ml-1"} top-1/2 z-50 glass-panel rounded-xl p-1.5 flex gap-1 flex-wrap shadow-xl border border-[var(--hairline)]`}
+            style={{ width: "136px" }}
+          >
+            {SWATCH_COLORS.map((c) => (
+              <button
+                key={c}
+                className="h-5 w-5 rounded-md border border-black/10 dark:border-white/10 transition-transform hover:scale-110"
+                style={{ background: c }}
+                onClick={(e) => { e.stopPropagation(); onChange(c); }}
+              />
+            ))}
+            <input
+              type="color"
+              value={value.startsWith("#") ? value.slice(0, 7) : "#a78bfa"}
+              onChange={(e) => onChange(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              className="ml-1 h-5 w-6 cursor-pointer rounded border-0 bg-transparent p-0"
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 type Item =
   | { kind: "sep" }
@@ -51,8 +112,35 @@ export function ContextMenu() {
   const updateEdge = useEditor((s) => s.updateEdge);
   const updateEdgeExtras = useEditor((s) => s.updateEdgeExtras);
   const edges = useEditor((s) => s.edges);
+  const updateShape = useEditor((s) => s.updateShape);
 
   const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [openSubmenuLeft, setOpenSubmenuLeft] = useState(false);
+
+  useLayoutEffect(() => {
+    if (menu && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      let x = menu.x;
+      let y = menu.y;
+
+      if (x + rect.width > window.innerWidth - 15) {
+        x = window.innerWidth - rect.width - 15;
+      }
+      if (y + rect.height > window.innerHeight - 15) {
+        y = window.innerHeight - rect.height - 15;
+      }
+
+      x = Math.max(15, x);
+      y = Math.max(15, y);
+
+      setOpenSubmenuLeft(x + rect.width > window.innerWidth - 150);
+
+      setPos({ x, y });
+    } else {
+      setPos(null);
+    }
+  }, [menu]);
 
   useEffect(() => {
     if (!menu) return;
@@ -141,7 +229,40 @@ export function ContextMenu() {
             duplicateSelected();
           },
         },
-        { kind: "sep" },
+        ...(targetNode
+          ? [
+              { kind: "sep" as const },
+              {
+                kind: "custom" as const,
+                render: () => (
+                  <div className="flex flex-col p-0.5">
+                    <ColorRow
+                      title="Fill Color"
+                      icon={Palette}
+                      value={targetNode.data.fill || "#a78bfa22"}
+                      onChange={(c) => updateShape(targetNode.id, { fill: c + "33", stroke: c })}
+                      openLeft={openSubmenuLeft}
+                    />
+                    <ColorRow
+                      title="Stroke Color"
+                      icon={Paintbrush}
+                      value={targetNode.data.stroke || "#a78bfa"}
+                      onChange={(c) => updateShape(targetNode.id, { stroke: c })}
+                      openLeft={openSubmenuLeft}
+                    />
+                    <ColorRow
+                      title="Text Color"
+                      icon={Type}
+                      value={targetNode.data.textColor || "#000000"}
+                      onChange={(c) => updateShape(targetNode.id, { textColor: c })}
+                      openLeft={openSubmenuLeft}
+                    />
+                  </div>
+                ),
+              },
+              { kind: "sep" as const },
+            ]
+          : []),
         {
           kind: "item",
           icon: BringToFront,
@@ -190,15 +311,7 @@ export function ContextMenu() {
           },
         },
       ]
-    : [
-        {
-          kind: "item",
-          icon: ClipboardPaste,
-          label: "Paste",
-          shortcut: "⌘V",
-          onClick: () => paste(),
-        },
-      ];
+    : [];
 
   if (menu.bendPointId && menu.edgeId) {
     items = [
@@ -310,6 +423,7 @@ export function ContextMenu() {
       ];
     }
   }
+  if (items.length === 0) return null;
 
   return (
     <AnimatePresence>
@@ -320,7 +434,7 @@ export function ContextMenu() {
         exit={{ opacity: 0, scale: 0.98 }}
         transition={{ duration: 0.1 }}
         className="glass-panel pointer-events-auto fixed z-50 min-w-[220px] rounded-xl p-1 text-[12px]"
-        style={{ left: menu.x, top: menu.y }}
+        style={{ left: pos?.x ?? menu.x, top: pos?.y ?? menu.y, visibility: pos ? "visible" : "hidden" }}
         onContextMenu={(e) => e.preventDefault()}
       >
         {items.map((it, idx) => {

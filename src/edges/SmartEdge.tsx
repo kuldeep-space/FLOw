@@ -11,7 +11,13 @@ import {
   getStraightPath as getNativeStraightPath,
 } from "@xyflow/react";
 import { BsArrowsMove } from "react-icons/bs";
-import { getEdgePath } from "@/features/editor/pathEngine";
+import {
+  getEdgePath,
+  getPolylineCenter,
+  type Point,
+} from "@/features/editor/pathEngine";
+import { getClosestPointOnShape } from "@/features/editor/shapeMath";
+import { ShapeRegistry } from "@/features/editor/shapes";
 import { useEditor } from "@/features/editor/store";
 
 function getIntersection(
@@ -32,6 +38,17 @@ function getIntersection(
   const scaleY = h2 / Math.abs(dy);
   const scale = Math.min(scaleX, scaleY);
   return { x: cx + dx * scale, y: cy + dy * scale };
+}
+
+function applyGap(px: number, py: number, cx: number, cy: number, gap: number) {
+  const dx = px - cx;
+  const dy = py - cy;
+  const dist = Math.hypot(dx, dy);
+  if (dist === 0) return { x: px, y: py };
+  return {
+    x: px + (dx / dist) * gap,
+    y: py + (dy / dist) * gap,
+  };
 }
 
 export function SmartEdge(props: EdgeProps) {
@@ -125,7 +142,74 @@ export function SmartEdge(props: EdgeProps) {
     });
 
     const handlePointerMove = (eMove: PointerEvent) => {
-      const pos = screenToFlowPosition({ x: eMove.clientX, y: eMove.clientY });
+      let pos = screenToFlowPosition({ x: eMove.clientX, y: eMove.clientY });
+      
+      const storeNodes = useEditor.getState().nodes;
+      let closestPoint: { nodeId: string; pointIndex?: number; customPos?: any; x?: number; y?: number } | null = null;
+      let minDist = 24; // Use 24 here for consistency
+      const isMagneticSnap = useEditor.getState().magneticSnap;
+
+      if (isMagneticSnap) {
+        for (const n of storeNodes) {
+          if (n.type === "anchor") continue;
+          const nw = n.measured?.width ?? (n.data as any)?.width ?? 180;
+          const nh = n.measured?.height ?? (n.data as any)?.height ?? 100;
+          const shapeDef = ShapeRegistry.get((n.data as any)?.kind) ?? ShapeRegistry.get("rectangle");
+          if (shapeDef) {
+            const pts = shapeDef.getConnectionPoints(nw, nh);
+            pts.forEach((pt, i) => {
+              const gx = n.position.x + pt.x;
+              const gy = n.position.y + pt.y;
+              const dist = Math.hypot(pos.x - gx, pos.y - gy);
+              if (dist < minDist) {
+                minDist = dist;
+                closestPoint = { nodeId: n.id, pointIndex: i, x: gx, y: gy };
+              }
+            });
+          }
+        }
+      } else {
+        for (const n of storeNodes) {
+          if (n.type === "anchor") continue;
+          const nw = n.measured?.width ?? (n.data as any)?.width ?? 180;
+          const nh = n.measured?.height ?? (n.data as any)?.height ?? 100;
+          const kind = (n.data as any)?.kind || "rectangle";
+          
+          if (pos.x >= n.position.x - 24 && pos.x <= n.position.x + nw + 24 &&
+              pos.y >= n.position.y - 24 && pos.y <= n.position.y + nh + 24) {
+              
+              const localX = pos.x - n.position.x;
+              const localY = pos.y - n.position.y;
+              const p = getClosestPointOnShape(kind, nw, nh, localX, localY);
+              
+              let dist = Math.hypot(localX - p.x, localY - p.y);
+              
+              if (localX >= 0 && localX <= nw && localY >= 0 && localY <= nh) {
+                  dist = 0;
+              }
+              
+              if (dist < minDist) {
+                 minDist = dist;
+                 const pctX = p.x / nw;
+                 const pctY = p.y / nh;
+                 closestPoint = { nodeId: n.id, customPos: { x: p.x + n.position.x, y: p.y + n.position.y, pctX, pctY } };
+              }
+          }
+        }
+      }
+
+      if (closestPoint) {
+        if (isMagneticSnap) {
+          pos = { x: closestPoint.x!, y: closestPoint.y! };
+          useEditor.getState().setMagneticSnapPoint({ nodeId: closestPoint.nodeId, pointIndex: closestPoint.pointIndex });
+        } else {
+          pos = { x: closestPoint.customPos!.x, y: closestPoint.customPos!.y };
+          useEditor.getState().setMagneticSnapPoint({ nodeId: closestPoint.nodeId, customPos: closestPoint.customPos });
+        }
+      } else {
+        useEditor.getState().setMagneticSnapPoint(null);
+      }
+      
       setDragState((prev) => (prev ? { ...prev, currentX: pos.x, currentY: pos.y } : null));
     };
 
@@ -133,36 +217,62 @@ export function SmartEdge(props: EdgeProps) {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
       
+      const snapPoint = useEditor.getState().magneticSnapPoint;
+      useEditor.getState().setMagneticSnapPoint(null);
+      
       const dropPos = screenToFlowPosition({ x: eUp.clientX, y: eUp.clientY });
       setDragState(null);
       setInteractionState("IDLE");
 
-      const storeNodes = useEditor.getState().nodes;
-      let hitNode = null;
-      for (const n of storeNodes) {
-        if (n.type === "anchor") continue;
-        const nw = n.measured?.width ?? (n.data as any)?.width ?? 180;
-        const nh = n.measured?.height ?? (n.data as any)?.height ?? 100;
-        if (
-          dropPos.x >= n.position.x &&
-          dropPos.x <= n.position.x + nw &&
-          dropPos.y >= n.position.y &&
-          dropPos.y <= n.position.y + nh
-        ) {
-          hitNode = n;
-          break;
+      if (snapPoint) {
+        if (snapPoint.customPos) {
+           const edge = useEditor.getState().edges.find(e => e.id === id);
+           const handleSide = handle === "source" ? "customSource" : "customTarget";
+           updateEdge(id, {
+             [handle]: snapPoint.nodeId,
+             [`${handle}Handle`]: undefined,
+             data: {
+                ...edge?.data,
+                [handleSide]: {
+                   pctX: snapPoint.customPos.pctX,
+                   pctY: snapPoint.customPos.pctY
+                }
+             }
+           });
+        } else {
+           updateEdge(id, { 
+             [handle]: snapPoint.nodeId,
+             [`${handle}Handle`]: `point-${snapPoint.pointIndex}`
+           });
         }
-      }
-
-      if (hitNode) {
-        updateEdge(id, { [handle]: hitNode.id });
       } else {
-        const anchorId = `anchor-${Date.now()}`;
-        useEditor.setState((s) => ({
-          nodes: [...s.nodes, { id: anchorId, type: "anchor", position: dropPos, data: {} }],
-          isDirty: true
-        }));
-        updateEdge(id, { [handle]: anchorId });
+        const storeNodes = useEditor.getState().nodes;
+        let hitNode = null;
+        for (const n of storeNodes) {
+          if (n.type === "anchor") continue;
+          const nw = n.measured?.width ?? (n.data as any)?.width ?? 180;
+          const nh = n.measured?.height ?? (n.data as any)?.height ?? 100;
+          if (
+            dropPos.x >= n.position.x &&
+            dropPos.x <= n.position.x + nw &&
+            dropPos.y >= n.position.y &&
+            dropPos.y <= n.position.y + nh
+          ) {
+            hitNode = n;
+            break;
+          }
+        }
+
+        if (hitNode) {
+          updateEdge(id, { [handle]: hitNode.id, [`${handle}Handle`]: undefined });
+        } else {
+          const anchorId = `anchor-${Date.now()}`;
+          useEditor.setState((s) => ({
+            nodes: [...s.nodes, { id: anchorId, type: "anchor", position: dropPos, data: {} }],
+            isDirty: true
+          }));
+          updateEdge(id, { [handle]: anchorId, [`${handle}Handle`]: undefined });
+        }
       }
       
       useEditor.getState().cleanupOrphanAnchors();
@@ -217,6 +327,12 @@ export function SmartEdge(props: EdgeProps) {
             const sourceN = nextNodes[sourceIndex];
             if (sourceN.type === "anchor") {
                nextNodes[sourceIndex] = { ...sourceN, position: { x: sourceN.position.x + dx, y: sourceN.position.y + dy } };
+            } else {
+               const newAnchorId = `anchor_${Date.now()}_s`;
+               edge.source = newAnchorId;
+               edge.sourceHandle = undefined;
+               if (edge.data) delete edge.data.customSource;
+               nextNodes.push({ id: newAnchorId, type: "anchor", position: { x: sx + dx, y: sy + dy }, data: {} } as any);
             }
          }
          
@@ -224,6 +340,12 @@ export function SmartEdge(props: EdgeProps) {
             const targetN = nextNodes[targetIndex];
             if (targetN.type === "anchor") {
                nextNodes[targetIndex] = { ...targetN, position: { x: targetN.position.x + dx, y: targetN.position.y + dy } };
+            } else {
+               const newAnchorId = `anchor_${Date.now()}_t`;
+               edge.target = newAnchorId;
+               edge.targetHandle = undefined;
+               if (edge.data) delete edge.data.customTarget;
+               nextNodes.push({ id: newAnchorId, type: "anchor", position: { x: tx + dx, y: ty + dy }, data: {} } as any);
             }
          }
          
@@ -242,9 +364,6 @@ export function SmartEdge(props: EdgeProps) {
   };
 
   const handleBodyDragStart = (e: React.PointerEvent) => {
-    const currentBends = (props.data?.bendPoints as { x: number; y: number; id: string }[]) || [];
-    if (currentBends.length === 0) return;
-    
     e.stopPropagation();
     setInteractionState("MOVING_CONNECTOR");
     const startPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
@@ -275,18 +394,49 @@ export function SmartEdge(props: EdgeProps) {
       if (dx === 0 && dy === 0) return;
 
       useEditor.setState((s) => {
+         const nextNodes = [...s.nodes];
          const nextEdges = [...s.edges];
+         
          const edgeIndex = nextEdges.findIndex((e) => e.id === id);
          if (edgeIndex === -1) return {};
-         
          const edge = { ...nextEdges[edgeIndex] };
-         const cb = (edge.data?.bendPoints as { x: number; y: number; id: string }[]) || [];
-         if (cb.length > 0) {
-            edge.data = { ...edge.data, bendPoints: cb.map(bp => ({ ...bp, x: bp.x + dx, y: bp.y + dy })) };
+
+         const sourceIndex = nextNodes.findIndex((n) => n.id === source);
+         const targetIndex = nextNodes.findIndex((n) => n.id === target);
+         
+         if (sourceIndex !== -1) {
+            const sourceN = nextNodes[sourceIndex];
+            if (sourceN.type === "anchor") {
+               nextNodes[sourceIndex] = { ...sourceN, position: { x: sourceN.position.x + dx, y: sourceN.position.y + dy } };
+            } else {
+               const newAnchorId = `anchor_${Date.now()}_s`;
+               edge.source = newAnchorId;
+               edge.sourceHandle = undefined;
+               if (edge.data) delete edge.data.customSource;
+               nextNodes.push({ id: newAnchorId, type: "anchor", position: { x: sx + dx, y: sy + dy }, data: {} } as any);
+            }
+         }
+         
+         if (targetIndex !== -1) {
+            const targetN = nextNodes[targetIndex];
+            if (targetN.type === "anchor") {
+               nextNodes[targetIndex] = { ...targetN, position: { x: targetN.position.x + dx, y: targetN.position.y + dy } };
+            } else {
+               const newAnchorId = `anchor_${Date.now()}_t`;
+               edge.target = newAnchorId;
+               edge.targetHandle = undefined;
+               if (edge.data) delete edge.data.customTarget;
+               nextNodes.push({ id: newAnchorId, type: "anchor", position: { x: tx + dx, y: ty + dy }, data: {} } as any);
+            }
+         }
+         
+         const currentBends = (edge.data?.bendPoints as { x: number; y: number; id: string }[]) || [];
+         if (currentBends.length > 0) {
+            edge.data = { ...edge.data, bendPoints: currentBends.map(bp => ({ ...bp, x: bp.x + dx, y: bp.y + dy })) };
          }
          nextEdges[edgeIndex] = edge;
          
-         return { edges: nextEdges, isDirty: true };
+         return { nodes: nextNodes, edges: nextEdges, isDirty: true };
       });
     };
 
@@ -306,16 +456,72 @@ export function SmartEdge(props: EdgeProps) {
     const tcx = targetNode.position.x + tw / 2;
     const tcy = targetNode.position.y + th / 2;
 
-    if (sourceNode.type !== "anchor" && !sourceHandleId?.startsWith("anchor-")) {
-      const p = getIntersection(sourceNode.position, sw, sh, { x: tcx, y: tcy }, (sourceNode.data as any)?.kind);
-      sx = p.x;
-      sy = p.y;
+    if (sourceNode.type !== "anchor") {
+      if (sourceHandleId?.startsWith("point-")) {
+        const idx = parseInt(sourceHandleId.replace("point-", ""));
+        const shapeDef = ShapeRegistry.get((sourceNode.data as any)?.kind) ?? ShapeRegistry.get("rectangle");
+        if (shapeDef) {
+          const pts = shapeDef.getConnectionPoints(sw, sh);
+          if (pts[idx]) {
+            const pt = applyGap(sourceNode.position.x + pts[idx].x, sourceNode.position.y + pts[idx].y, scx, scy, 4);
+            sx = pt.x;
+            sy = pt.y;
+          }
+        }
+      } else if (data?.customSource) {
+        const custom = data.customSource as any;
+        const pt = applyGap(sourceNode.position.x + (custom.pctX * sw), sourceNode.position.y + (custom.pctY * sh), scx, scy, 4);
+        sx = pt.x;
+        sy = pt.y;
+      } else if (sourceHandleId?.startsWith("custom-")) {
+        const parts = sourceHandleId.split("-");
+        if (parts.length === 3) {
+          const pctX = parseFloat(parts[1]);
+          const pctY = parseFloat(parts[2]);
+          const pt = applyGap(sourceNode.position.x + (pctX * sw), sourceNode.position.y + (pctY * sh), scx, scy, 4);
+          sx = pt.x;
+          sy = pt.y;
+        }
+      } else if (!sourceHandleId?.startsWith("anchor-")) {
+        const p = getIntersection(sourceNode.position, sw, sh, { x: tcx, y: tcy }, (sourceNode.data as any)?.kind);
+        const pt = applyGap(p.x, p.y, scx, scy, 4);
+        sx = pt.x;
+        sy = pt.y;
+      }
     }
 
-    if (targetNode.type !== "anchor" && !targetHandleId?.startsWith("anchor-")) {
-      const p = getIntersection(targetNode.position, tw, th, { x: scx, y: scy }, (targetNode.data as any)?.kind);
-      tx = p.x;
-      ty = p.y;
+    if (targetNode.type !== "anchor") {
+      if (targetHandleId?.startsWith("point-")) {
+        const idx = parseInt(targetHandleId.replace("point-", ""));
+        const shapeDef = ShapeRegistry.get((targetNode.data as any)?.kind) ?? ShapeRegistry.get("rectangle");
+        if (shapeDef) {
+          const pts = shapeDef.getConnectionPoints(tw, th);
+          if (pts[idx]) {
+            const pt = applyGap(targetNode.position.x + pts[idx].x, targetNode.position.y + pts[idx].y, tcx, tcy, 4);
+            tx = pt.x;
+            ty = pt.y;
+          }
+        }
+      } else if (data?.customTarget) {
+        const custom = data.customTarget as any;
+        const pt = applyGap(targetNode.position.x + (custom.pctX * tw), targetNode.position.y + (custom.pctY * th), tcx, tcy, 4);
+        tx = pt.x;
+        ty = pt.y;
+      } else if (targetHandleId?.startsWith("custom-")) {
+        const parts = targetHandleId.split("-");
+        if (parts.length === 3) {
+          const pctX = parseFloat(parts[1]);
+          const pctY = parseFloat(parts[2]);
+          const pt = applyGap(targetNode.position.x + (pctX * tw), targetNode.position.y + (pctY * th), tcx, tcy, 4);
+          tx = pt.x;
+          ty = pt.y;
+        }
+      } else if (!targetHandleId?.startsWith("anchor-")) {
+        const p = getIntersection(targetNode.position, tw, th, { x: scx, y: scy }, (targetNode.data as any)?.kind);
+        const pt = applyGap(p.x, p.y, tcx, tcy, 4);
+        tx = pt.x;
+        ty = pt.y;
+      }
     }
   }
 
@@ -334,9 +540,11 @@ export function SmartEdge(props: EdgeProps) {
         tx = dragState.currentX;
         ty = dragState.currentY;
       }
-    } else if (dragState.type === "move") {
-      if (sourceNode?.type === "anchor") { sx += dx; sy += dy; }
-      if (targetNode?.type === "anchor") { tx += dx; ty += dy; }
+    } else if (dragState.type === "move" || dragState.type === "body") {
+      sx += dx;
+      sy += dy;
+      tx += dx;
+      ty += dy;
     }
   }
 
@@ -373,8 +581,11 @@ export function SmartEdge(props: EdgeProps) {
     path = res.path;
     midpoints = res.midpoints;
     midIndex = Math.floor(midpoints.length / 2);
-    labelX = midpoints[midIndex]?.x || (sx + tx) / 2;
-    labelY = midpoints[midIndex]?.y || (sy + ty) / 2;
+    
+    // Calculate the true center of the path for the move handle
+    const centerPoint = getPolylineCenter(points);
+    labelX = centerPoint.x;
+    labelY = centerPoint.y;
   }
 
   let moveHandleX = labelX;
@@ -404,7 +615,7 @@ export function SmartEdge(props: EdgeProps) {
     ny = dx_overall / len_overall;
   }
 
-  const OFFSET = 36;
+  const OFFSET = 16;
   moveHandleX += nx * OFFSET;
   moveHandleY += ny * OFFSET;
 
