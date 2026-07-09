@@ -19,6 +19,7 @@ import type {
   ShapeData,
   ShapeKind,
 } from "./types";
+export type { ConnectorTool } from "./types";
 import { db } from "../../db";
 
 export type ShapeNode = Node<ShapeData, "shape">;
@@ -52,7 +53,17 @@ export const CONNECTOR_TO_EDGE: Record<
   curved: { kind: "simplebezier", arrow: false },
 };
 
+export type InteractionState = 
+  | "IDLE"
+  | "SELECTING"
+  | "MOVING_CONNECTOR"
+  | "EDITING_CONNECTOR"
+  | "DRAWING_CONNECTOR"
+  | "DRAWING_SHAPE"
+  | "PANNING";
+
 interface EditorState {
+  interactionState: InteractionState;
   nodes: FlowNode[];
   edges: FlowEdge[];
   activeTool: Tool;
@@ -92,9 +103,10 @@ interface EditorState {
   isDragging: boolean;
   isResizing: boolean;
   snapGridSize: number;
- 
+
   setIsDragging: (v: boolean) => void;
   setIsResizing: (v: boolean) => void;
+  setInteractionState: (state: InteractionState) => void;
   setSnapGridSize: (v: number) => void;
 
   setNodes: (n: FlowNode[]) => void;
@@ -130,6 +142,7 @@ interface EditorState {
   selectAll: () => void;
   bringToFront: () => void;
   sendToBack: () => void;
+  cleanupOrphanAnchors: () => void;
   alignNodes: (
     alignment: "left" | "center" | "right" | "top" | "middle" | "bottom",
   ) => void;
@@ -204,21 +217,44 @@ const labelFor = (kind: ShapeKind): string => {
     sticky: "Note",
     text: "Text",
     image: "",
-    draw: "Drawing",
+    draw: "Freehand",
     highlighter: "Highlighter",
     eraser: "Eraser",
+    cloud: "Cloud",
   };
   return map[kind];
 };
 
-const defaultsFor = (kind: ShapeKind): ShapeData => {
+export const defaultsFor = (kind: ShapeKind): ShapeData => {
+  const colors = [
+    "purple",
+    "blue",
+    "cyan",
+    "emerald",
+    "amber",
+    "rose",
+    "pink",
+    "zinc",
+    "stone",
+    "red",
+    "orange",
+    "lime",
+  ];
+  const randomColor = colors[Math.floor(Math.random() * colors.length)];
+  const isTransparent =
+    kind === "text" ||
+    kind === "image" ||
+    kind === "draw" ||
+    kind === "highlighter" ||
+    kind === "eraser";
+
   const base: ShapeData = {
     kind,
-    label: labelFor(kind),
-    fill: "rgba(139, 92, 246, 0.08)",
-    stroke: "#a78bfa",
+    label: "",
+    fill: isTransparent ? "transparent" : `var(--shape-fill-${randomColor})`,
+    stroke: isTransparent ? "transparent" : `var(--shape-stroke-${randomColor})`,
     strokeWidth: 1.5,
-    textColor: "#e4e4e7",
+    textColor: "var(--foreground)",
     fontSize: 14,
     fontWeight: 500,
     fontAlign: "center",
@@ -228,17 +264,17 @@ const defaultsFor = (kind: ShapeKind): ShapeData => {
   if (kind === "sticky")
     return {
       ...base,
-      fill: "#fbbf24",
+      fill: "var(--shape-fill-amber)",
       textColor: "#1c1917",
-      stroke: "transparent",
-      label: "Sticky note",
+      stroke: "var(--shape-stroke-amber)",
+      label: "",
     };
   if (kind === "text")
     return {
       ...base,
       fill: "transparent",
       stroke: "transparent",
-      label: "Text",
+      label: "",
       fontSize: 20,
       fontWeight: 600,
       fontAlign: "left",
@@ -265,6 +301,7 @@ const defaultsFor = (kind: ShapeKind): ShapeData => {
     return {
       ...base,
       fill: "transparent",
+      stroke: `var(--shape-stroke-${randomColor})`,
       strokeWidth: 3,
       label: "",
       points: [],
@@ -299,11 +336,12 @@ const snapshot = (s: EditorState): HistorySnapshot => ({
 export const applyEdgeStyle = (edge: FlowEdge): FlowEdge => {
   const extras = edge.data ?? {};
   const color = extras.color ?? "#a78bfa";
-  const width = extras.width ?? 2;
+  const width = extras.width ?? 1;
   const dashed = extras.dashed;
   const dotted = extras.dotted;
   return {
     ...edge,
+    zIndex: 100,
     animated: !!extras.animated,
     label: extras.label,
     labelStyle: extras.label
@@ -358,6 +396,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   lastSavedAt: null,
   isDirty: false,
   currentProjectId: null,
+  interactionState: "IDLE",
   isDragging: false,
   isResizing: false,
   snapGridSize: 8,
@@ -389,6 +428,8 @@ export const useEditor = create<EditorState>((set, get) => ({
         }
       }
 
+      let initialBendPoints: { id: string; x: number; y: number }[] = [];
+
       const base: FlowEdge = {
         id: nid("e"),
         source: conn.source!,
@@ -396,7 +437,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         sourceHandle: conn.sourceHandle ?? undefined,
         targetHandle: conn.targetHandle ?? undefined,
         type,
-        data: { arrow, color: "#a78bfa", width: 2, animated: s.edgeAnimated },
+        data: { arrow, color: "#a78bfa", width: 1, animated: s.edgeAnimated, bendPoints: initialBendPoints },
       };
       return { edges: [...s.edges, applyEdgeStyle(base)], isDirty: true };
     });
@@ -556,18 +597,31 @@ export const useEditor = create<EditorState>((set, get) => ({
 
     if (!selectedNodeIds.length && !selectedEdgeIds.length) return;
     get().pushHistory();
-    set((s) => ({
-      nodes: s.nodes.filter((n) => !selectedNodeIds.includes(n.id)),
-      edges: s.edges.filter(
+    set((s) => {
+      const nextEdges = s.edges.filter(
         (e) =>
           !selectedEdgeIds.includes(e.id) &&
           !selectedNodeIds.includes(e.source) &&
-          !selectedNodeIds.includes(e.target),
-      ),
-      selectedNodeIds: [],
-      selectedEdgeIds: [],
-      isDirty: true,
-    }));
+          !selectedNodeIds.includes(e.target)
+      );
+
+      const nextNodes = s.nodes.filter((n) => {
+        if (selectedNodeIds.includes(n.id)) return false;
+        if (n.type === "anchor") {
+          return nextEdges.some((e) => e.source === n.id || e.target === n.id);
+        }
+        return true;
+      });
+
+      return {
+        nodes: nextNodes,
+        edges: nextEdges,
+        selectedNodeIds: [],
+        selectedEdgeIds: [],
+        isDirty: true,
+      };
+    });
+    get().cleanupOrphanAnchors();
   },
 
   duplicateSelected: () => {
@@ -682,6 +736,21 @@ export const useEditor = create<EditorState>((set, get) => ({
       return { nodes: [...sel, ...rest], isDirty: true };
     });
   },
+
+  cleanupOrphanAnchors: () =>
+    set((s) => {
+      // Find all anchors that are NOT referenced by any edge's source or target
+      const referencedAnchorIds = new Set<string>();
+      s.edges.forEach((e) => {
+        referencedAnchorIds.add(e.source);
+        referencedAnchorIds.add(e.target);
+      });
+      const nextNodes = s.nodes.filter(
+        (n) => n.type !== "anchor" || referencedAnchorIds.has(n.id)
+      );
+      if (nextNodes.length === s.nodes.length) return {};
+      return { nodes: nextNodes, isDirty: true };
+    }),
 
   alignNodes: (alignment) => {
     const { selectedNodeIds } = get();
@@ -812,10 +881,10 @@ export const useEditor = create<EditorState>((set, get) => ({
         n.id === id
           ? n.type === "shape"
             ? {
-                ...n,
-                draggable: n.data.locked ? true : false,
-                data: { ...n.data, locked: !n.data.locked } as ShapeData,
-              }
+              ...n,
+              draggable: n.data.locked ? true : false,
+              data: { ...n.data, locked: !n.data.locked } as ShapeData,
+            }
             : n
           : n,
       ),
@@ -828,10 +897,10 @@ export const useEditor = create<EditorState>((set, get) => ({
         n.id === id
           ? n.type === "shape"
             ? {
-                ...n,
-                hidden: !n.data.hidden,
-                data: { ...n.data, hidden: !n.data.hidden } as ShapeData,
-              }
+              ...n,
+              hidden: !n.data.hidden,
+              data: { ...n.data, hidden: !n.data.hidden } as ShapeData,
+            }
             : n
           : n,
       ),
@@ -857,10 +926,10 @@ export const useEditor = create<EditorState>((set, get) => ({
           edges: s.edges.map((e) =>
             selectedEdgeIds.includes(e.id)
               ? applyEdgeStyle({
-                  ...e,
-                  type: cfg.kind,
-                  data: { ...(e.data ?? {}), arrow: cfg.arrow },
-                })
+                ...e,
+                type: cfg.kind,
+                data: { ...(e.data ?? {}), arrow: cfg.arrow },
+              })
               : e,
           ),
           isDirty: true,
@@ -916,6 +985,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setIsConnecting: (isConnecting) => set({ isConnecting }),
   setPendingConnectSource: (pendingConnectSource) =>
     set({ pendingConnectSource }),
+  setInteractionState: (state) => set({ interactionState: state }),
   setIsDragging: (isDragging) => set({ isDragging }),
   setIsResizing: (isResizing) => set({ isResizing }),
   setSnapGridSize: (snapGridSize) => set({ snapGridSize }),

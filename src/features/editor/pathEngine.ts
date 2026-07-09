@@ -38,7 +38,7 @@ export function getStraightPath(points: Point[]): PathResult {
  */
 export function getRoundedPolyline(
   points: Point[],
-  radius: number = 8,
+  radius: number = 20,
 ): PathResult {
   if (points.length < 2) return { path: "", midpoints: [] };
   if (points.length === 2) return getStraightPath(points);
@@ -133,13 +133,11 @@ export function getCurvedPath(
 }
 
 export function getEdgePath(points: Point[], kind: string): PathResult {
-  if (kind === "straight" || kind === "orthogonal") {
-    // Orthogonal handles its routing logic during dragging.
-    // The renderer just draws lines between the points.
+  if (kind === "straight") {
     return getStraightPath(points);
-  } else if (kind === "smoothstep") {
-    return getRoundedPolyline(points, 12);
-  } else if (kind === "bezier" || kind === "curved") {
+  } else if (kind === "orthogonal" || kind === "smoothstep") {
+    return getRoundedPolyline(points, 20);
+  } else if (kind === "bezier" || kind === "curved" || kind === "simplebezier") {
     return getCurvedPath(points, 0.25);
   } else {
     return getStraightPath(points);

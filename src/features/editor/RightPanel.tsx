@@ -39,10 +39,27 @@ const SWATCHES = [
   "#84cc16",
 ];
 
+const SWATCH_MAP: Record<string, string> = {
+  "#a78bfa": "purple",
+  "#60a5fa": "blue",
+  "#22d3ee": "cyan",
+  "#34d399": "emerald",
+  "#fbbf24": "amber",
+  "#fb7185": "rose",
+  "#f472b6": "pink",
+  "#e4e4e7": "zinc",
+  "#1c1917": "stone",
+  "#ef4444": "red",
+  "#f97316": "orange",
+  "#84cc16": "lime",
+};
+
 const EDGE_TYPES: { id: EdgeKind; label: string }[] = [
-  { id: "smoothstep", label: "Orthogonal" },
-  { id: "simplebezier", label: "Curve" },
   { id: "straight", label: "Straight" },
+  { id: "orthogonal", label: "Orthogonal" },
+  { id: "smoothstep", label: "Smooth Step" },
+  { id: "bezier", label: "Bezier" },
+  { id: "curved", label: "Curved" },
 ];
 
 function Row({
@@ -176,7 +193,7 @@ function ShapeInspector({ id, data }: { id: string; data: ShapeData }) {
                 className="tool-btn !h-6 !w-6"
                 title="Align Top"
               >
-                <AlignTop size={14} />
+                <AlignVerticalJustifyStart size={14} />
               </button>
               <button
                 onClick={() => alignNodes("middle")}
@@ -190,7 +207,7 @@ function ShapeInspector({ id, data }: { id: string; data: ShapeData }) {
                 className="tool-btn !h-6 !w-6"
                 title="Align Bottom"
               >
-                <AlignBottom size={14} />
+                <AlignVerticalJustifyEnd size={14} />
               </button>
             </div>
           </Row>
@@ -239,18 +256,23 @@ function ShapeInspector({ id, data }: { id: string; data: ShapeData }) {
         <>
           <Section title="Fill">
             <div className="flex flex-wrap gap-1.5">
-              {SWATCHES.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => {
-                    pushHistory();
-                    set({ fill: c + "22", stroke: c });
-                  }}
-                  className="h-6 w-6 rounded-md border border-[var(--hairline)] transition-transform hover:scale-110"
-                  style={{ background: c }}
-                  title={c}
-                />
-              ))}
+              {SWATCHES.map((c) => {
+                const colorName = SWATCH_MAP[c] || "purple";
+                const fillVal = `var(--shape-fill-${colorName})`;
+                const strokeVal = `var(--shape-stroke-${colorName})`;
+                return (
+                  <button
+                    key={c}
+                    onClick={() => {
+                      pushHistory();
+                      set({ fill: fillVal, stroke: strokeVal });
+                    }}
+                    className="h-6 w-6 rounded-md border border-[var(--hairline)] transition-transform hover:scale-110"
+                    style={{ background: c }}
+                    title={colorName}
+                  />
+                );
+              })}
             </div>
             <div className="mt-2 flex items-center gap-2">
               <input
@@ -273,7 +295,7 @@ function ShapeInspector({ id, data }: { id: string; data: ShapeData }) {
                 <input
                   type="color"
                   value={
-                    data.stroke === "transparent" ? "#a78bfa" : data.stroke
+                    data.stroke === "transparent" ? "#a78bfa" : rgbToHex(data.stroke)
                   }
                   onChange={(e) => set({ stroke: e.target.value })}
                   className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent"
@@ -306,7 +328,7 @@ function ShapeInspector({ id, data }: { id: string; data: ShapeData }) {
             <Row label="Color">
               <input
                 type="color"
-                value={data.textColor}
+                value={rgbToHex(data.textColor)}
                 onChange={(e) => set({ textColor: e.target.value })}
                 className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent"
               />
@@ -510,7 +532,7 @@ function EdgeInspector({ id }: { id: string }) {
         <Row label="Color">
           <input
             type="color"
-            value={extras.color ?? "#a78bfa"}
+            value={rgbToHex(extras.color ?? "#a78bfa")}
             onChange={(e) => updateEdgeExtras(id, { color: e.target.value })}
             className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent"
           />
@@ -521,14 +543,14 @@ function EdgeInspector({ id }: { id: string }) {
             min={1}
             max={8}
             step={0.5}
-            value={extras.width ?? 2}
+            value={extras.width ?? 1}
             onChange={(e) =>
               updateEdgeExtras(id, { width: Number(e.target.value) })
             }
             className="w-24 accent-[var(--color-primary)]"
           />
           <span className="w-6 text-right text-[11px] tabular-nums text-muted-foreground">
-            {extras.width ?? 2}
+            {extras.width ?? 1}
           </span>
         </Row>
         <Row label="Dashed">
@@ -551,20 +573,8 @@ function EdgeInspector({ id }: { id: string }) {
         </Row>
       </Section>
 
-      <Section title="Arrowheads">
-        <Row label="End">
-          <Toggle
-            value={extras.arrow !== false}
-            onChange={(v) => updateEdgeExtras(id, { arrow: v })}
-          />
-        </Row>
-        <Row label="Start">
-          <Toggle
-            value={!!extras.arrowStart}
-            onChange={(v) => updateEdgeExtras(id, { arrowStart: v })}
-          />
-        </Row>
-      </Section>
+
+
     </>
   );
 }

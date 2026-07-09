@@ -19,9 +19,11 @@ import {
   getSmoothStepPath,
   getBezierPath,
   useStore,
+  Position,
 } from "@xyflow/react";
+import { useEditor, isConnectorTool, type FlowEdge, applyEdgeStyle, CONNECTOR_TO_EDGE, type ConnectorTool, defaultsFor } from "./store";
+import { InteractionManager } from "./connector-engine";
 import { getFreehandPath } from "./freehand";
-import { useEditor, isConnectorTool, type FlowEdge, applyEdgeStyle, CONNECTOR_TO_EDGE, type ConnectorTool } from "./store";
 import { ShapeNode } from "@/nodes/ShapeNode";
 import { InfiniteCanvasGrid } from "./InfiniteCanvasGrid";
 import { AnchorNode } from "@/nodes/AnchorNode";
@@ -31,10 +33,11 @@ import { ShortcutHelper } from "./ShortcutHelper";
 
 const nodeTypes: NodeTypes = { shape: ShapeNode, anchor: AnchorNode };
 const edgeTypes = {
+  smart: SmartEdge,
   straight: SmartEdge,
   smoothstep: SmartEdge,
   simplebezier: SmartEdge,
-  default: SmartEdge,
+  bezier: SmartEdge,
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -101,6 +104,7 @@ function CanvasInner() {
 
   const [spaceDown, setSpaceDown] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
+  const connectionMade = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -136,7 +140,7 @@ function CanvasInner() {
 
   const isShapeTool = useMemo(
     () =>
-      !["select", "hand", "draw", "highlighter", "pencil", "image"].includes(
+      !["select", "hand", "draw", "highlighter", "pencil", "image", "cloud"].includes(
         activeTool,
       ) && !isConnectorTool(activeTool as never),
     [activeTool],
@@ -216,13 +220,22 @@ function CanvasInner() {
     (_evt: React.MouseEvent, node: Node) => {
       if (activeTool === "eraser") {
         useEditor.getState().pushHistory();
-        useEditor.setState((s) => ({
-          nodes: s.nodes.filter((n) => n.id !== node.id),
-          edges: s.edges.filter(
-            (e) => e.source !== node.id && e.target !== node.id,
-          ),
-          isDirty: true,
-        }));
+        useEditor.setState((s) => {
+          const remainingEdges = s.edges.filter(
+            (e) => e.source !== node.id && e.target !== node.id
+          );
+          const remainingNodes = s.nodes.filter((n) => n.id !== node.id).filter((n) => {
+            if (n.type === "anchor") {
+              return remainingEdges.some((e) => e.source === n.id || e.target === n.id);
+            }
+            return true;
+          });
+          return {
+            nodes: remainingNodes,
+            edges: remainingEdges,
+            isDirty: true,
+          };
+        });
         return;
       }
       if (!isConnector) return;
@@ -246,10 +259,20 @@ function CanvasInner() {
     (_evt: React.MouseEvent, edge: Edge) => {
       if (activeTool === "eraser") {
         useEditor.getState().pushHistory();
-        useEditor.setState((s) => ({
-          edges: s.edges.filter((e) => e.id !== edge.id),
-          isDirty: true,
-        }));
+        useEditor.setState((s) => {
+          const remainingEdges = s.edges.filter((e) => e.id !== edge.id);
+          const remainingNodes = s.nodes.filter((n) => {
+            if (n.type === "anchor") {
+              return remainingEdges.some((e) => e.source === n.id || e.target === n.id);
+            }
+            return true;
+          });
+          return {
+            nodes: remainingNodes,
+            edges: remainingEdges,
+            isDirty: true,
+          };
+        });
       }
     },
     [activeTool],
@@ -296,6 +319,12 @@ function CanvasInner() {
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0) return;
+      
+      const state = useEditor.getState();
+      if (state.interactionState !== "IDLE" && state.interactionState !== "SELECTING") {
+        return; // An interaction is already in progress (e.g. edge moving)
+      }
+
       const pos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
 
       if (
@@ -331,16 +360,14 @@ function CanvasInner() {
               width: 0,
               height: 0,
               data: {
-                kind: activeTool,
-                fill: "transparent",
-                stroke: "#a78bfa",
-                strokeWidth: 2,
+                ...defaultsFor(activeTool as never),
               },
               selected: true,
             } as any,
           ],
           selectedNodeIds: [id],
         }));
+        useEditor.getState().setInteractionState("DRAWING_SHAPE");
         setIsDrawing(true);
         wrapperRef.current?.setPointerCapture(e.pointerId);
         return;
@@ -375,7 +402,7 @@ function CanvasInner() {
           source: sourceId,
           target: targetId,
           type,
-          data: { arrow, color: "#a78bfa", width: 2 },
+          data: { arrow, color: "#a78bfa", width: 1 },
         });
 
         useEditor.setState((s) => ({
@@ -383,6 +410,7 @@ function CanvasInner() {
           edges: [...s.edges, newEdge as any],
         }));
 
+        useEditor.getState().setInteractionState("DRAWING_CONNECTOR");
         setDraftConnector({ sourceId, targetId });
         setIsDrawing(true);
         wrapperRef.current?.setPointerCapture(e.pointerId);
@@ -469,6 +497,7 @@ function CanvasInner() {
           { points: relativePoints },
         );
       }
+      InteractionManager.end();
       setActiveDrawStroke(null);
 
       if (draftShapeId && draftShapeStart) {
@@ -580,9 +609,70 @@ function CanvasInner() {
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onConnectStart={() => useEditor.getState().setIsConnecting(true)}
-        onConnectEnd={() => useEditor.getState().setIsConnecting(false)}
+        zoomOnDoubleClick={false}
+        onConnect={(conn) => {
+          connectionMade.current = true;
+          onConnect(conn);
+        }}
+        onConnectStart={(e, params) => {
+          connectionMade.current = false;
+          useEditor.getState().setIsConnecting(true);
+          if (params) {
+            useEditor.getState().setPendingConnectSource({
+              nodeId: params.nodeId as string,
+              handleId: params.handleId as string | undefined,
+            });
+          }
+        }}
+        onConnectEnd={(event: any) => {
+          useEditor.getState().setIsConnecting(false);
+          const pending = useEditor.getState().pendingConnectSource;
+          if (!connectionMade.current && pending && pending.nodeId && rfInstance) {
+            const { clientX, clientY } = "changedTouches" in event ? event.changedTouches[0] : event;
+            const pos = rfInstance.screenToFlowPosition({ x: clientX, y: clientY });
+            
+            // Check if dropped on another node without snapping
+            const state = useEditor.getState();
+            let targetNodeId = null;
+            
+            const hitNode = state.nodes.find((n) => {
+              if (n.type === "anchor" || n.id === pending.nodeId) return false;
+              const nw = n.measured?.width ?? (n.data as any)?.width ?? 180;
+              const nh = n.measured?.height ?? (n.data as any)?.height ?? 100;
+              return (
+                pos.x >= n.position.x &&
+                pos.x <= n.position.x + nw &&
+                pos.y >= n.position.y &&
+                pos.y <= n.position.y + nh
+              );
+            });
+            
+            let finalTargetId = hitNode?.id;
+            
+            // Create anchor if dropped in empty space
+            if (!finalTargetId) {
+              finalTargetId = `anchor_${Date.now()}_t`;
+              useEditor.setState((s) => ({
+                nodes: [
+                  ...s.nodes,
+                  { id: finalTargetId, type: "anchor", position: pos, data: {} } as any,
+                ],
+              }));
+            }
+            
+            // Force connection
+            onConnect({
+              source: pending.nodeId,
+              sourceHandle: pending.handleId || null,
+              target: finalTargetId!,
+              targetHandle: null,
+            });
+          }
+          useEditor.getState().setPendingConnectSource(null);
+          if (!("shiftKey" in event && event.shiftKey)) {
+            useEditor.getState().setActiveTool("select");
+          }
+        }}
         onReconnect={onReconnectHandler}
         onReconnectStart={() => useEditor.getState().setIsConnecting(true)}
         onReconnectEnd={() => useEditor.getState().setIsConnecting(false)}
@@ -607,7 +697,8 @@ function CanvasInner() {
           interactionWidth: 24,
         }}
         proOptions={{ hideAttribution: true }}
-        panOnScroll
+        panOnScroll={false}
+        zoomOnScroll={true}
         panOnDrag={spaceDown || activeTool === "hand" ? true : [1, 2]}
         selectionOnDrag={activeTool === "select" && !spaceDown}
         selectionMode={SelectionMode.Partial}
@@ -616,12 +707,10 @@ function CanvasInner() {
         snapGrid={[snapGridSize, snapGridSize]}
         minZoom={0.1}
         maxZoom={4}
-        edgesReconnectable={!presenting}
+        edgesReconnectable={false}
         nodesDraggable={!presenting && activeTool === "select"}
         nodesConnectable={!presenting}
         elementsSelectable={!presenting}
-        fitView
-        fitViewOptions={{ padding: 0.4, maxZoom: 1 }}
         onNodeDragStart={() => useEditor.getState().setIsDragging(true)}
         onNodeDragStop={() => useEditor.getState().setIsDragging(false)}
         onSelectionDragStart={() => useEditor.getState().setIsDragging(true)}
@@ -681,6 +770,7 @@ function CustomConnectionLine({
   fromY,
   toX,
   toY,
+  toPosition,
 }: ConnectionLineComponentProps) {
   // Use reactive subscription so re-renders happen as user drags
   const activeTool = useEditor((s) => s.activeTool);
@@ -699,44 +789,35 @@ function CustomConnectionLine({
     isArrow = true;
     kind = "smoothstep";
   } else if (activeTool === "curved") {
-    isArrow = false;
+    isArrow = true;
     kind = "simplebezier";
   }
 
-  let path = "";
-  if (kind === "smoothstep") {
-    [path] = getSmoothStepPath({
-      sourceX: fromX,
-      sourceY: fromY,
-      targetX: toX,
-      targetY: toY,
-      borderRadius: 12,
-    });
-  } else if (kind === "simplebezier" || kind === "bezier" || kind === "curved") {
-    [path] = getBezierPath({
-      sourceX: fromX,
-      sourceY: fromY,
-      targetX: toX,
-      targetY: toY,
-    });
-  } else {
-    [path] = getStraightPath({
-      sourceX: fromX,
-      sourceY: fromY,
-      targetX: toX,
-      targetY: toY,
-    });
-  }
+  // All tools draw a straight line initially (no initial bends), just like the final edges do.
+  const [path] = getStraightPath({
+    sourceX: fromX,
+    sourceY: fromY,
+    targetX: toX,
+    targetY: toY,
+  });
 
   // Arrowhead angle based on direction of travel toward target
   const dx = toX - fromX;
   const dy = toY - fromY;
-  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+  let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+  
+  if (toPosition) {
+    if (toPosition === Position.Left) angle = 0;
+    else if (toPosition === Position.Right) angle = 180;
+    else if (toPosition === Position.Top) angle = 90;
+    else if (toPosition === Position.Bottom) angle = -90;
+  }
+
   const color = "#a78bfa";
 
   return (
     <g>
-      <path d={path} fill="none" stroke={color} strokeWidth={2} />
+      <path d={path} fill="none" stroke={color} strokeWidth={1} />
       {isArrow && (
         <polygon
           points="-14,-7 0,0 -14,7"

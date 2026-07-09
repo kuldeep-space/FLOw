@@ -258,19 +258,27 @@ export function TopBar() {
       >
         <Grid3x3 size={16} strokeWidth={1.8} />
       </IconBtn>
-      <div className="flex items-center gap-0">
-        <IconBtn
-          onClick={() => setGridSnap(!gridSnap)}
-          active={gridSnap}
-          title="Snap to grid"
-          className="rounded-r-none border-r-0"
-        >
-          <Grid2x2 size={16} strokeWidth={1.8} />
-        </IconBtn>
+      <div className="flex h-8 items-center gap-0 rounded-md border border-[var(--hairline)] bg-[color-mix(in_oklab,var(--surface-elevated)_70%,transparent)] px-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => setGridSnap(!gridSnap)}
+              className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${gridSnap ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-[var(--color-accent)] hover:text-foreground"}`}
+            >
+              <Grid2x2 size={14} strokeWidth={1.8} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={8}>
+            <p className="text-[11px] font-medium tracking-wide">Snap to grid</p>
+          </TooltipContent>
+        </Tooltip>
+        
+        <div className="h-4 w-px bg-[var(--hairline)] mx-1" />
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button 
-              className="flex h-8 items-center justify-center rounded-r-md border border-[var(--hairline)] bg-[color-mix(in_oklab,var(--surface-elevated)_70%,transparent)] px-2 text-[10px] font-semibold tracking-wide text-muted-foreground hover:bg-[var(--color-accent)] hover:text-foreground outline-none transition-colors border-l-0"
+              className="flex h-6 items-center justify-center rounded px-1.5 text-[10px] font-semibold tracking-wide text-muted-foreground hover:bg-[var(--color-accent)] hover:text-foreground outline-none transition-colors"
               title="Change snap size"
             >
               {snapGridSize}
