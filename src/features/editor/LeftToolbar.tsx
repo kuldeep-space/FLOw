@@ -123,6 +123,8 @@ export function LeftToolbar() {
   const activeTool = useEditor((s) => s.activeTool);
   const setActiveTool = useEditor((s) => s.setActiveTool);
   const cursor = useEditor((s) => s.cursor);
+  const setShowInspector = useEditor((s) => s.setShowInspector);
+  const setInspectorCollapsed = useEditor((s) => s.setInspectorCollapsed);
 
   const openImageDialog = () => {
     openFileDialog("image/*", (file) => importImageFile(file, cursor));
@@ -145,7 +147,15 @@ export function LeftToolbar() {
                 <Tooltip key={t.id}>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={() => setActiveTool(t.id)}
+                      onClick={() => {
+                        setActiveTool(t.id);
+                        if (t.id === "pencil") {
+                          setShowInspector(true);
+                          setInspectorCollapsed(false);
+                        } else {
+                          setShowInspector(false);
+                        }
+                      }}
                       className={`tool-btn relative ${active ? "tool-btn-active" : ""}`}
                     >
                       <Icon size={16} strokeWidth={1.8} />

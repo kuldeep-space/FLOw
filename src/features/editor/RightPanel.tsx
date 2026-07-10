@@ -159,10 +159,11 @@ function ShapeInspector({ id, data }: { id: string; data: ShapeData }) {
 
   const isImage = data.kind === "image";
   const isText = data.kind === "text";
+  const isDraw = data.kind === "draw" || data.kind === "highlighter";
 
   return (
     <>
-      {selectedNodeIds.length >= 2 && (
+      {selectedNodeIds.length >= 2 && !isDraw && (
         <Section title="Arrange">
           <Row label="Align">
             <div className="flex items-center gap-1">
@@ -240,7 +241,7 @@ function ShapeInspector({ id, data }: { id: string; data: ShapeData }) {
             {data.kind}
           </span>
         </Row>
-        {!isImage && (
+        {!isImage && !isDraw && (
           <Row label="Label">
             <input
               value={data.label}
@@ -254,7 +255,7 @@ function ShapeInspector({ id, data }: { id: string; data: ShapeData }) {
 
       {!isImage && (
         <>
-          <Section title="Fill">
+          <Section title={isDraw ? "Color" : "Fill"}>
             <div className="flex flex-wrap gap-1.5">
               {SWATCHES.map((c) => {
                 const colorName = SWATCH_MAP[c] || "purple";
@@ -289,7 +290,7 @@ function ShapeInspector({ id, data }: { id: string; data: ShapeData }) {
             </div>
           </Section>
 
-          {!isText && (
+          {!isText && !isDraw && (
             <Section title="Stroke">
               <Row label="Color">
                 <input
@@ -324,56 +325,58 @@ function ShapeInspector({ id, data }: { id: string; data: ShapeData }) {
             </Section>
           )}
 
-          <Section title="Typography">
-            <Row label="Color">
-              <input
-                type="color"
-                value={rgbToHex(data.textColor)}
-                onChange={(e) => set({ textColor: e.target.value })}
-                className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent"
-              />
-            </Row>
-            <Row label="Size">
-              <input
-                type="range"
-                min={10}
-                max={48}
-                step={1}
-                value={data.fontSize}
-                onChange={(e) => set({ fontSize: Number(e.target.value) })}
-                className="w-24 accent-[var(--color-primary)]"
-              />
-              <span className="w-6 text-right text-[11px] tabular-nums text-muted-foreground">
-                {data.fontSize}
-              </span>
-            </Row>
-            <Row label="Weight">
-              <select
-                value={data.fontWeight}
-                onChange={(e) => set({ fontWeight: Number(e.target.value) })}
-                className="rounded-md bg-[var(--color-accent)] px-2 py-1 text-[12px] outline-none"
-              >
-                {[400, 500, 600, 700, 800].map((w) => (
-                  <option key={w} value={w}>
-                    {w}
-                  </option>
-                ))}
-              </select>
-            </Row>
-            <Row label="Align">
-              <div className="flex overflow-hidden rounded-md bg-[var(--color-accent)]">
-                {(["left", "center", "right"] as const).map((a) => (
-                  <button
-                    key={a}
-                    onClick={() => set({ fontAlign: a })}
-                    className={`px-2 py-1 text-[11px] capitalize ${data.fontAlign === a ? "bg-primary text-primary-foreground" : ""}`}
-                  >
-                    {a}
-                  </button>
-                ))}
-              </div>
-            </Row>
-          </Section>
+          {!isDraw && (
+            <Section title="Typography">
+              <Row label="Color">
+                <input
+                  type="color"
+                  value={rgbToHex(data.textColor)}
+                  onChange={(e) => set({ textColor: e.target.value })}
+                  className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent"
+                />
+              </Row>
+              <Row label="Size">
+                <input
+                  type="range"
+                  min={10}
+                  max={48}
+                  step={1}
+                  value={data.fontSize}
+                  onChange={(e) => set({ fontSize: Number(e.target.value) })}
+                  className="w-24 accent-[var(--color-primary)]"
+                />
+                <span className="w-6 text-right text-[11px] tabular-nums text-muted-foreground">
+                  {data.fontSize}
+                </span>
+              </Row>
+              <Row label="Weight">
+                <select
+                  value={data.fontWeight}
+                  onChange={(e) => set({ fontWeight: Number(e.target.value) })}
+                  className="rounded-md bg-[var(--color-accent)] px-2 py-1 text-[12px] outline-none"
+                >
+                  {[400, 500, 600, 700, 800].map((w) => (
+                    <option key={w} value={w}>
+                      {w}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+              <Row label="Align">
+                <div className="flex overflow-hidden rounded-md bg-[var(--color-accent)]">
+                  {(["left", "center", "right"] as const).map((a) => (
+                    <button
+                      key={a}
+                      onClick={() => set({ fontAlign: a })}
+                      className={`px-2 py-1 text-[11px] capitalize ${data.fontAlign === a ? "bg-primary text-primary-foreground" : ""}`}
+                    >
+                      {a}
+                    </button>
+                  ))}
+                </div>
+              </Row>
+            </Section>
+          )}
         </>
       )}
 
@@ -451,59 +454,63 @@ function ShapeInspector({ id, data }: { id: string; data: ShapeData }) {
         </Section>
       )}
 
-      <Section title="Effects">
-        <Row label="Shadow">
-          <Toggle value={!!data.shadow} onChange={(v) => set({ shadow: v })} />
-        </Row>
-        <Row label="Opacity">
-          <input
-            type="range"
-            min={0.1}
-            max={1}
-            step={0.05}
-            value={data.opacity}
-            onChange={(e) => set({ opacity: Number(e.target.value) })}
-            className="w-24 accent-[var(--color-primary)]"
-          />
-          <span className="w-8 text-right text-[11px] tabular-nums text-muted-foreground">
-            {Math.round(data.opacity * 100)}%
-          </span>
-        </Row>
-        <Row label="Rotation">
-          <input
-            type="range"
-            min={-180}
-            max={180}
-            step={1}
-            value={data.rotation}
-            onChange={(e) => set({ rotation: Number(e.target.value) })}
-            className="w-24 accent-[var(--color-primary)]"
-          />
-          <span className="w-8 text-right text-[11px] tabular-nums text-muted-foreground">
-            {data.rotation}°
-          </span>
-        </Row>
-      </Section>
+      {!isDraw && (
+        <Section title="Effects">
+          <Row label="Shadow">
+            <Toggle value={!!data.shadow} onChange={(v) => set({ shadow: v })} />
+          </Row>
+          <Row label="Opacity">
+            <input
+              type="range"
+              min={0.1}
+              max={1}
+              step={0.05}
+              value={data.opacity}
+              onChange={(e) => set({ opacity: Number(e.target.value) })}
+              className="w-24 accent-[var(--color-primary)]"
+            />
+            <span className="w-8 text-right text-[11px] tabular-nums text-muted-foreground">
+              {Math.round(data.opacity * 100)}%
+            </span>
+          </Row>
+          <Row label="Rotation">
+            <input
+              type="range"
+              min={-180}
+              max={180}
+              step={1}
+              value={data.rotation}
+              onChange={(e) => set({ rotation: Number(e.target.value) })}
+              className="w-24 accent-[var(--color-primary)]"
+            />
+            <span className="w-8 text-right text-[11px] tabular-nums text-muted-foreground">
+              {data.rotation}°
+            </span>
+          </Row>
+        </Section>
+      )}
 
-      <Section title="Arrange" defaultOpen={false}>
-        <Row label="Order">
-          <button
-            className="rounded-md bg-[var(--color-accent)] px-2 py-1 text-[11px] hover:bg-primary hover:text-primary-foreground"
-            onClick={bringToFront}
-          >
-            Bring front
-          </button>
-          <button
-            className="rounded-md bg-[var(--color-accent)] px-2 py-1 text-[11px] hover:bg-primary hover:text-primary-foreground"
-            onClick={sendToBack}
-          >
-            Send back
-          </button>
-        </Row>
-        <Row label="Lock">
-          <Toggle value={!!data.locked} onChange={(v) => set({ locked: v })} />
-        </Row>
-      </Section>
+      {!isDraw && (
+        <Section title="Arrange" defaultOpen={false}>
+          <Row label="Order">
+            <button
+              className="rounded-md bg-[var(--color-accent)] px-2 py-1 text-[11px] hover:bg-primary hover:text-primary-foreground"
+              onClick={bringToFront}
+            >
+              Bring front
+            </button>
+            <button
+              className="rounded-md bg-[var(--color-accent)] px-2 py-1 text-[11px] hover:bg-primary hover:text-primary-foreground"
+              onClick={sendToBack}
+            >
+              Send back
+            </button>
+          </Row>
+          <Row label="Lock">
+            <Toggle value={!!data.locked} onChange={(v) => set({ locked: v })} />
+          </Row>
+        </Section>
+      )}
     </>
   );
 }
@@ -585,6 +592,53 @@ function rgbToHex(v: string) {
   return "#a78bfa";
 }
 
+function Shortcuts() {
+  return (
+    <Section title="Shortcuts" defaultOpen={false}>
+      <div className="grid grid-cols-2 gap-y-1.5 gap-x-2 text-[10px] text-muted-foreground">
+        <div className="flex items-center justify-end"><Kbd>V</Kbd></div>
+        <span className="text-left flex items-center">Select</span>
+        
+        <div className="flex items-center justify-end"><Kbd>R</Kbd></div>
+        <span className="text-left flex items-center">Rectangle</span>
+        
+        <div className="flex items-center justify-end"><Kbd>T</Kbd></div>
+        <span className="text-left flex items-center">Text</span>
+        
+        <div className="flex items-center justify-end"><Kbd>S</Kbd></div>
+        <span className="text-left flex items-center">Sticky</span>
+        
+        <div className="flex items-center justify-end"><Kbd>L</Kbd></div>
+        <span className="text-left flex items-center">Line</span>
+        
+        <div className="flex items-center justify-end"><Kbd>A</Kbd></div>
+        <span className="text-left flex items-center">Arrow</span>
+        
+        <div className="flex items-center justify-end"><Kbd>O</Kbd></div>
+        <span className="text-left flex items-center">Orthogonal</span>
+        
+        <div className="flex items-center justify-end"><Kbd>C</Kbd></div>
+        <span className="text-left flex items-center">Curved</span>
+        
+        <div className="flex items-center justify-end"><Kbd>P</Kbd></div>
+        <span className="text-left flex items-center">Pencil</span>
+        
+        <div className="flex items-center justify-end"><Kbd>E</Kbd></div>
+        <span className="text-left flex items-center">Eraser</span>
+        
+        <div className="flex items-center justify-end"><Kbd>⌘S</Kbd></div>
+        <span className="text-left flex items-center">Save</span>
+        
+        <div className="flex items-center justify-end"><Kbd>⌘D</Kbd></div>
+        <span className="text-left flex items-center">Duplicate</span>
+        
+        <div className="flex items-center justify-end"><Kbd>⌫</Kbd></div>
+        <span className="text-left flex items-center">Delete</span>
+      </div>
+    </Section>
+  );
+}
+
 function EmptyState() {
   return (
     <motion.div
@@ -601,34 +655,6 @@ function EmptyState() {
         Pick a tool on the left, drop a shape on the canvas, then select a Connector tool (like Arrow)
         to reveal <span className="text-primary">magnetic anchors</span> on the shapes and drag to connect.
       </div>
-      <div className="mt-6 grid grid-cols-2 gap-1.5 text-[10px] text-muted-foreground">
-        <Kbd>V</Kbd>
-        <span className="text-left">Select</span>
-        <Kbd>R</Kbd>
-        <span className="text-left">Rectangle</span>
-        <Kbd>T</Kbd>
-        <span className="text-left">Text</span>
-        <Kbd>S</Kbd>
-        <span className="text-left">Sticky</span>
-        <Kbd>L</Kbd>
-        <span className="text-left">Line</span>
-        <Kbd>A</Kbd>
-        <span className="text-left">Arrow</span>
-        <Kbd>O</Kbd>
-        <span className="text-left">Orthogonal</span>
-        <Kbd>C</Kbd>
-        <span className="text-left">Curved</span>
-        <Kbd>P</Kbd>
-        <span className="text-left">Pencil</span>
-        <Kbd>E</Kbd>
-        <span className="text-left">Eraser</span>
-        <Kbd>⌘S</Kbd>
-        <span className="text-left">Save</span>
-        <Kbd>⌘D</Kbd>
-        <span className="text-left">Duplicate</span>
-        <Kbd>⌫</Kbd>
-        <span className="text-left">Delete</span>
-      </div>
     </motion.div>
   );
 }
@@ -642,11 +668,126 @@ function CursorCoordinates() {
   );
 }
 
+function PencilInspector() {
+  const drawSettings = useEditor((s) => s.drawSettings);
+  const setDrawSettings = useEditor((s) => s.setDrawSettings);
+
+  return (
+    <>
+      <Section title="Color">
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {SWATCHES.map((c) => {
+            const colorName = SWATCH_MAP[c] || "purple";
+            const strokeVal = `var(--shape-stroke-${colorName})`;
+            return (
+              <button
+                key={c}
+                onClick={() => setDrawSettings({ color: strokeVal })}
+                className="h-6 w-6 rounded-md border border-[var(--hairline)] transition-transform hover:scale-110"
+                style={{ background: c }}
+                title={colorName}
+              />
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            value={rgbToHex(drawSettings.color)}
+            onChange={(e) => setDrawSettings({ color: e.target.value })}
+            className="h-7 w-8 cursor-pointer rounded border-0 bg-transparent"
+          />
+          <input
+            value={drawSettings.color}
+            onChange={(e) => setDrawSettings({ color: e.target.value })}
+            className="flex-1 rounded-md bg-[var(--color-accent)] px-2 py-1 font-mono text-[11px] outline-none"
+          />
+        </div>
+      </Section>
+      <Section title="Stroke">
+        <Row label="Thickness">
+          <input
+            type="range"
+            min={1}
+            max={32}
+            step={1}
+            value={drawSettings.thickness}
+            onChange={(e) => setDrawSettings({ thickness: Number(e.target.value) })}
+            className="w-24 accent-[var(--color-primary)]"
+          />
+          <span className="w-6 text-right text-[11px] tabular-nums text-muted-foreground">
+            {drawSettings.thickness}
+          </span>
+        </Row>
+        <Row label="Opacity">
+          <input
+            type="range"
+            min={0.1}
+            max={1}
+            step={0.1}
+            value={drawSettings.opacity}
+            onChange={(e) => setDrawSettings({ opacity: Number(e.target.value) })}
+            className="w-24 accent-[var(--color-primary)]"
+          />
+          <span className="w-6 text-right text-[11px] tabular-nums text-muted-foreground">
+            {drawSettings.opacity}
+          </span>
+        </Row>
+      </Section>
+      <Section title="Glow">
+        <Row label="Intensity">
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.1}
+            value={drawSettings.glowIntensity}
+            onChange={(e) => setDrawSettings({ glowIntensity: Number(e.target.value) })}
+            className="w-24 accent-[var(--color-primary)]"
+          />
+          <span className="w-6 text-right text-[11px] tabular-nums text-muted-foreground">
+            {drawSettings.glowIntensity}
+          </span>
+        </Row>
+        <Row label="Opacity">
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.1}
+            value={drawSettings.glowOpacity ?? 1}
+            onChange={(e) => setDrawSettings({ glowOpacity: Number(e.target.value) })}
+            className="w-24 accent-[var(--color-primary)]"
+          />
+          <span className="w-6 text-right text-[11px] tabular-nums text-muted-foreground">
+            {drawSettings.glowOpacity ?? 1}
+          </span>
+        </Row>
+        <Row label="Radius">
+          <input
+            type="range"
+            min={1}
+            max={50}
+            step={1}
+            value={drawSettings.glowRadius}
+            onChange={(e) => setDrawSettings({ glowRadius: Number(e.target.value) })}
+            className="w-24 accent-[var(--color-primary)]"
+          />
+          <span className="w-6 text-right text-[11px] tabular-nums text-muted-foreground">
+            {drawSettings.glowRadius}
+          </span>
+        </Row>
+      </Section>
+    </>
+  );
+}
+
 export function RightPanel() {
   const selectedNode = useEditor((s) =>
     s.nodes.find((n) => s.selectedNodeIds.includes(n.id) && n.type === "shape"),
   ) as import("./store").ShapeNode | undefined;
   const selectedEdgeIds = useEditor((s) => s.selectedEdgeIds);
+  const activeTool = useEditor((s) => s.activeTool);
   const zoom = useEditor((s) => s.zoom);
   const showInspector = useEditor((s) => s.showInspector);
   const setShowInspector = useEditor((s) => s.setShowInspector);
@@ -735,19 +876,7 @@ export function RightPanel() {
           </div>
         </div>
         <div className="flex items-center gap-0.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-[var(--color-accent)] hover:text-foreground active:scale-95 transition-transform"
-                onClick={() => setInspectorCollapsed(true)}
-              >
-                <ChevronsRight size={13} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top" sideOffset={8}>
-              <p className="text-[11px] font-medium tracking-wide">Collapse</p>
-            </TooltipContent>
-          </Tooltip>
+
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -767,13 +896,13 @@ export function RightPanel() {
       </div>
 
       <AnimatePresence mode="wait">
-        {selectedNode ? (
+        {selectedNode && selectedNode.data.kind !== "draw" && selectedNode.data.kind !== "highlighter" ? (
           <motion.div
             key={"n-" + selectedNode.id}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.16 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.08 }}
             className="flex-1 overflow-y-auto"
           >
             <ShapeInspector id={selectedNode.id} data={selectedNode.data} />
@@ -781,16 +910,36 @@ export function RightPanel() {
         ) : selectedEdgeId ? (
           <motion.div
             key={"e-" + selectedEdgeId}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.16 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.08 }}
             className="flex-1 overflow-y-auto"
           >
             <EdgeInspector id={selectedEdgeId} />
           </motion.div>
+        ) : activeTool === "pencil" ? (
+          <motion.div
+            key="pencil-inspector"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.08 }}
+            className="flex-1 overflow-y-auto"
+          >
+            <PencilInspector />
+          </motion.div>
         ) : (
-          <EmptyState />
+          <motion.div
+            key="empty-shortcuts"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.08 }}
+            className="flex-1 overflow-y-auto"
+          >
+            <EmptyState />
+          </motion.div>
         )}
       </AnimatePresence>
 

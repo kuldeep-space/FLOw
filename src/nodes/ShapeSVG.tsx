@@ -1,4 +1,4 @@
-import { getFreehandPath } from "../features/editor/freehand";
+import { getFreehandPath, getSimplePath } from "../features/editor/freehand";
 import type { ShapeData, ShapeKind } from "../features/editor/types";
 
 interface Props {
@@ -46,7 +46,7 @@ export function ShapeSVG({ kind, width: w, height: h, data }: Props) {
       preserveAspectRatio="none"
       style={{
         overflow:
-          kind === "draw" || kind === "highlighter" ? "visible" : "hidden",
+          kind === "draw" || kind === "pencil" || kind === "highlighter" ? "visible" : "hidden",
         mixBlendMode: kind === "highlighter" ? "multiply" : "normal",
       }}
     >
@@ -73,15 +73,38 @@ function renderShape(
   data: ShapeData,
 ) {
   switch (kind) {
-    case "draw":
+    case "pencil":
+    case "draw": {
+      const pts = (data.points as { x: number; y: number; pressure?: number }[]) || [];
+      if (pts.length === 0) return null;
+      
+      const pathData = getSimplePath(pts);
+      const isGlow = data.glowIntensity && data.glowIntensity > 0;
+      const glowRadius = data.glowRadius || 10;
+      const glowOpacity = data.glowOpacity ?? 1;
+      const filterId = `neon-glow-${glowRadius}-${data.glowIntensity}-${glowOpacity}`;
+      
+      return (
+        <g opacity={data.opacity ?? 1}>
+          <path
+            d={pathData}
+            fill="none"
+            stroke={p.stroke || "#000"}
+            strokeWidth={p.strokeWidth || 4}
+            strokeLinecap={data.lineCap || p.strokeLinecap || "round"}
+            strokeLinejoin={data.lineJoin || p.strokeLinejoin || "round"}
+            strokeDasharray={p.strokeDasharray}
+            filter={isGlow ? `url(#${filterId})` : undefined}
+          />
+        </g>
+      );
+    }
     case "highlighter": {
       const pts =
         (data.points as { x: number; y: number; pressure?: number }[]) || [];
       if (pts.length === 0) return null;
-      const isHighlighter = kind === "highlighter";
-      const pathData = getFreehandPath(pts, isHighlighter, p.strokeWidth || 3);
-
-      return <path d={pathData} fill={p.stroke || "#a78bfa"} />;
+      const pathData = getFreehandPath(pts, true, p.strokeWidth || 3);
+      return <path d={pathData} fill={p.stroke || "#a78bfa"} opacity={data.opacity ?? 1} />;
     }
     case "rectangle":
       return <rect x={1} y={1} width={w - 2} height={h - 2} rx={12} {...p} />;

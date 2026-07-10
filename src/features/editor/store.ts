@@ -18,6 +18,7 @@ import type {
   EdgeKind,
   ShapeData,
   ShapeKind,
+  DrawSettings,
 } from "./types";
 export type { ConnectorTool } from "./types";
 import { db } from "../../db";
@@ -110,6 +111,9 @@ interface EditorState {
   setIsResizing: (v: boolean) => void;
   setInteractionState: (state: InteractionState) => void;
   setSnapGridSize: (v: number) => void;
+
+  drawSettings: DrawSettings;
+  setDrawSettings: (patch: Partial<DrawSettings>) => void;
 
   setNodes: (n: FlowNode[]) => void;
   setEdges: (e: FlowEdge[]) => void;
@@ -222,6 +226,7 @@ const labelFor = (kind: ShapeKind): string => {
     draw: "Freehand",
     highlighter: "Highlighter",
     eraser: "Eraser",
+    pencil: "Pencil",
     cloud: "Cloud",
   };
   return map[kind];
@@ -247,6 +252,7 @@ export const defaultsFor = (kind: ShapeKind): ShapeData => {
     kind === "text" ||
     kind === "image" ||
     kind === "draw" ||
+    kind === "pencil" ||
     kind === "highlighter" ||
     kind === "eraser";
 
@@ -459,11 +465,27 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().pushHistory();
     const id = nid();
     const size = sizeFor(kind);
+    
+    let drawExtra = {};
+    if (kind === "draw" || kind === "pencil" || kind === "highlighter") {
+      const ds = get().drawSettings;
+      drawExtra = {
+        stroke: ds.color,
+        strokeWidth: ds.thickness,
+        opacity: ds.opacity,
+        glowIntensity: ds.glowIntensity,
+        glowRadius: ds.glowRadius,
+        dashed: ds.dashed,
+        lineCap: ds.lineCap,
+        lineJoin: ds.lineJoin,
+      };
+    }
+    
     const node: ShapeNode = {
       id,
       type: "shape",
       position: { x: pos.x - size.width / 2, y: pos.y - size.height / 2 },
-      data: { ...defaultsFor(kind), ...extra },
+      data: { ...defaultsFor(kind), ...drawExtra, ...extra },
       width: size.width,
       height: size.height,
       selected: true,
@@ -940,7 +962,12 @@ export const useEditor = create<EditorState>((set, get) => ({
         }));
       }
     } else {
-      set({ activeTool, pendingConnectSource: null });
+      const keepSelection = ["select", "grab", "laser"].includes(activeTool);
+      set((s) => ({ 
+        activeTool, 
+        pendingConnectSource: null,
+        ...(keepSelection ? {} : { selectedNodeIds: [], selectedEdgeIds: [] })
+      }));
     }
   },
   setEdgeKind: (edgeKind) => {
@@ -989,10 +1016,15 @@ export const useEditor = create<EditorState>((set, get) => ({
   setIsConnecting: (isConnecting) => set({ isConnecting }),
   setPendingConnectSource: (pendingConnectSource) =>
     set({ pendingConnectSource }),
-  setInteractionState: (state) => set({ interactionState: state }),
-  setIsDragging: (isDragging) => set({ isDragging }),
-  setIsResizing: (isResizing) => set({ isResizing }),
-  setSnapGridSize: (snapGridSize) => set({ snapGridSize }),
+  setIsDragging: (v) => set({ isDragging: v }),
+  setIsResizing: (v) => set({ isResizing: v }),
+  setInteractionState: (v) => set({ interactionState: v }),
+  setSnapGridSize: (v) => set({ snapGridSize: v }),
+
+  setDrawSettings: (patch) => set((s) => ({
+    drawSettings: { ...s.drawSettings, ...patch }
+  })),
+
   connectFromTo: (source, target, sourceHandle, targetHandle) => {
     if (source === target) return;
     get().onConnect({
@@ -1005,6 +1037,18 @@ export const useEditor = create<EditorState>((set, get) => ({
   openContextMenu: (contextMenu) => set({ contextMenu }),
   closeContextMenu: () => set({ contextMenu: null }),
   setPresenting: (presenting) => set({ presenting }),
+
+  drawSettings: {
+    color: "#000000",
+    thickness: 4,
+    opacity: 1,
+    glowIntensity: 0,
+    glowRadius: 10,
+    glowOpacity: 1.0,
+    dashed: false,
+    lineCap: "round",
+    lineJoin: "round",
+  },
 
   pushHistory: () =>
     set((s) => ({ past: [...s.past.slice(-49), snapshot(s)], future: [] })),

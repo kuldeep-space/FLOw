@@ -14,6 +14,7 @@ export type ShapeKind =
   | "text"
   | "image"
   | "draw"
+  | "pencil"
   | "highlighter"
   | "eraser"
   | "cloud";
@@ -45,6 +46,11 @@ export type ShapeData = {
   flipV?: boolean;
   shadow?: boolean;
   points?: { x: number; y: number; pressure?: number }[]; // For freehand drawing
+  // Pencil/Drawing specific
+  glowIntensity?: number;
+  glowRadius?: number;
+  lineCap?: "round" | "square" | "butt";
+  lineJoin?: "round" | "bevel" | "miter";
   [key: string]: unknown;
 };
 
@@ -81,10 +87,25 @@ export interface EdgeExtras {
   labels?: ConnectorLabel[];
   points?: PathPoint[];
   version?: number;
+  glowIntensity?: number;
+  glowRadius?: number;
+  glowOpacity?: number;
   
   // Legacy support during migration
   bendPoints?: { id: string; x: number; y: number }[];
   controlPoints?: { x: number; y: number }[];
   
   [key: string]: unknown;
+}
+
+export interface DrawSettings {
+  color: string;
+  thickness: number;
+  opacity: number;
+  glowIntensity: number;
+  glowRadius: number;
+  glowOpacity: number;
+  dashed: boolean;
+  lineCap: "round" | "square" | "butt";
+  lineJoin: "round" | "bevel" | "miter";
 }

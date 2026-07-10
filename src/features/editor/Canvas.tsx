@@ -23,7 +23,7 @@ import {
 } from "@xyflow/react";
 import { useEditor, isConnectorTool, type FlowEdge, applyEdgeStyle, CONNECTOR_TO_EDGE, type ConnectorTool, defaultsFor } from "./store";
 import { InteractionManager } from "./connector-engine";
-import { getFreehandPath } from "./freehand";
+import { getFreehandPath, getSimplePath } from "./freehand";
 import { ShapeNode } from "@/nodes/ShapeNode";
 import { ShapeRegistry } from "@/features/editor/shapes";
 import { getClosestPointOnShape } from "./shapeMath";
@@ -62,6 +62,9 @@ const cursorFor = (
 };
 
 function CanvasInner() {
+  const [laserStrokes, setLaserStrokes] = useState<{ id: string; points: {x: number, y: number}[] }[]>([]);
+  const [activeLaser, setActiveLaser] = useState<{x: number, y: number}[] | null>(null);
+
   const [activeDrawStroke, setActiveDrawStroke] = useState<
     { x: number; y: number; pressure?: number }[] | null
   >(null);
@@ -320,9 +323,42 @@ function CanvasInner() {
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
+      const state = useEditor.getState();
+      if (state.presenting) {
+        if (state.activeTool !== "pencil") {
+          if (e.button === 2) {
+            // Right click clears laser
+            setLaserStrokes([]);
+            setActiveLaser(null);
+            return;
+          } else if (e.button === 0) {
+            // Left click draws laser
+            const pos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+            setActiveLaser([{ x: pos.x, y: pos.y }]);
+            wrapperRef.current?.setPointerCapture(e.pointerId);
+            return;
+          }
+        } else {
+          if (e.button === 2) {
+            // Right click in presentation pencil mode clears all drawings
+            useEditor.getState().pushHistory();
+            useEditor.setState((s) => ({
+              nodes: s.nodes.filter((n) => {
+                if (n.type === "shape") {
+                  const kind = (n.data as any)?.kind;
+                  if (kind === "draw" || kind === "highlighter" || kind === "pencil") return false;
+                }
+                return true;
+              }),
+              isDirty: true,
+            }));
+            return;
+          }
+        }
+      }
+
       if (e.button !== 0) return;
       
-      const state = useEditor.getState();
       if (state.interactionState !== "IDLE" && state.interactionState !== "SELECTING") {
         return; // An interaction is already in progress (e.g. edge moving)
       }
@@ -424,8 +460,14 @@ function CanvasInner() {
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (!isDrawing) return;
       const pos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+
+      if (activeLaser) {
+        setActiveLaser((prev) => (prev ? [...prev, { x: pos.x, y: pos.y }] : null));
+        return;
+      }
+
+      if (!isDrawing) return;
 
       if (activeDrawStroke) {
         const lastPoint = activeDrawStroke[activeDrawStroke.length - 1];
@@ -548,6 +590,15 @@ function CanvasInner() {
 
   const onPointerUp = useCallback(
     (e: React.PointerEvent) => {
+      if (activeLaser) {
+        wrapperRef.current?.releasePointerCapture(e.pointerId);
+        if (activeLaser.length > 1) {
+          setLaserStrokes((prev) => [...prev, { id: `laser_${Date.now()}`, points: activeLaser }]);
+        }
+        setActiveLaser(null);
+        return;
+      }
+
       if (!isDrawing) return;
       setIsDrawing(false);
       wrapperRef.current?.releasePointerCapture(e.pointerId);
@@ -678,10 +729,12 @@ function CanvasInner() {
       activeTool,
       addShape,
       setActiveTool,
+      activeLaser,
     ],
   );
 
-  const cursor = cursorFor(activeTool, spaceDown, !!pendingConnect);
+  let cursor = cursorFor(activeTool, spaceDown, !!pendingConnect);
+  if (presenting) cursor = "crosshair"; // Laser cursor
 
   return (
     <div
@@ -843,7 +896,126 @@ function CanvasInner() {
       )}
 
       <ShortcutHelper />
+      <GlowFilterRegistry />
+
+      {/* Laser Pointer Overlay */}
+      {presenting && (
+        <LaserStrokeOverlay strokes={laserStrokes} activeLaser={activeLaser} />
+      )}
     </div>
+  );
+}
+
+function LaserStrokeOverlay({
+  strokes,
+  activeLaser,
+}: {
+  strokes: { id: string; points: { x: number; y: number }[] }[];
+  activeLaser: { x: number; y: number }[] | null;
+}) {
+  const transform = useStore((s) => s.transform);
+
+  const allStrokes = [
+    ...strokes,
+    ...(activeLaser ? [{ id: "active", points: activeLaser }] : []),
+  ];
+
+  if (allStrokes.length === 0) return null;
+
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0 z-50 h-full w-full"
+      style={{
+        filter: "drop-shadow(0 0 8px rgba(239, 68, 68, 0.8))",
+      }}
+    >
+      <g
+        transform={`translate(${transform[0]}, ${transform[1]}) scale(${transform[2]})`}
+      >
+        {allStrokes.map((stroke) => {
+          if (stroke.points.length < 2) return null;
+          const path = getFreehandPath(stroke.points, false, 4);
+          return <path key={stroke.id} d={path} fill="#ff0000" />;
+        })}
+      </g>
+    </svg>
+  );
+}
+
+function GlowFilterRegistry() {
+  const nodes = useEditor((s) => s.nodes);
+  const ds = useEditor((s) => s.drawSettings);
+  const uniqueGlows = useMemo(() => {
+    const glows = new Set<string>();
+    nodes.forEach((n) => {
+      if (n.type === "shape") {
+        const data = n.data as any;
+        if (data.glowIntensity && data.glowIntensity > 0) {
+          const r = data.glowRadius || 10;
+          const i = data.glowIntensity || 0;
+          const o = data.glowOpacity ?? 1;
+          glows.add(`${r}-${i}-${o}`);
+        }
+      }
+    });
+    if (ds.glowIntensity > 0) {
+      glows.add(`${ds.glowRadius || 10}-${ds.glowIntensity}-${ds.glowOpacity ?? 1}`);
+    }
+    return Array.from(glows);
+  }, [nodes, ds.glowIntensity, ds.glowRadius, ds.glowOpacity]);
+
+  if (uniqueGlows.length === 0) return null;
+
+  return (
+    <svg style={{ position: "absolute", width: 0, height: 0, pointerEvents: "none" }}>
+      <defs>
+        {uniqueGlows.map((glowKey) => {
+          const [rStr, iStr, oStr] = glowKey.split("-");
+          const r = parseFloat(rStr);
+          const i = parseFloat(iStr);
+          const o = parseFloat(oStr);
+          const filterId = `neon-glow-${glowKey}`;
+          
+          return (
+            <filter
+              key={filterId}
+              id={filterId}
+              filterUnits="objectBoundingBox"
+              x="-100%"
+              y="-100%"
+              width="300%"
+              height="300%"
+            >
+              <feGaussianBlur in="SourceGraphic" stdDeviation={Math.max(r / 3, 1)} result="blur1" />
+              <feGaussianBlur in="SourceGraphic" stdDeviation={Math.max(r / 1.5, 2)} result="blur2" />
+              <feGaussianBlur in="SourceGraphic" stdDeviation={r} result="blur3" />
+              
+              <feMerge result="bloom">
+                <feMergeNode in="blur1" />
+                <feMergeNode in="blur2" />
+                <feMergeNode in="blur3" />
+              </feMerge>
+              
+              <feComponentTransfer in="bloom" result="boosted-bloom">
+                <feFuncA type="linear" slope={i * 3} />
+              </feComponentTransfer>
+              
+              <feColorMatrix
+                type="matrix"
+                values={`1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 ${o} 0`}
+                in="boosted-bloom"
+                result="final-glow"
+              />
+              
+              <feMerge>
+                <feMergeNode in="final-glow" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          );
+        })}
+      </defs>
+    </svg>
   );
 }
 
@@ -855,18 +1027,43 @@ function ActiveStrokeOverlay({
   isHighlighter: boolean;
 }) {
   const transform = useStore((s) => s.transform);
-  const path = getFreehandPath(points, isHighlighter, 3);
+  const ds = useEditor((s) => s.drawSettings);
+  
+  if (isHighlighter) {
+    const path = getFreehandPath(points, true, 3);
+    return (
+      <svg
+        className="pointer-events-none absolute inset-0 z-50 h-full w-full"
+        style={{ mixBlendMode: "multiply" }}
+      >
+        <g transform={`translate(${transform[0]}, ${transform[1]}) scale(${transform[2]})`}>
+          <path d={path} fill="rgba(250, 204, 21, 0.4)" />
+        </g>
+      </svg>
+    );
+  }
+
+  const pathData = getSimplePath(points);
+  const isGlow = ds.glowIntensity && ds.glowIntensity > 0;
+  const filterId = `neon-glow-${ds.glowRadius || 10}-${ds.glowIntensity || 0}-${ds.glowOpacity ?? 1}`;
+  
   return (
     <svg
       className="pointer-events-none absolute inset-0 z-50 h-full w-full"
-      style={{ mixBlendMode: isHighlighter ? "multiply" : "normal" }}
     >
       <g
         transform={`translate(${transform[0]}, ${transform[1]}) scale(${transform[2]})`}
+        opacity={ds.opacity ?? 1}
       >
         <path
-          d={path}
-          fill={isHighlighter ? "rgba(250, 204, 21, 0.4)" : "#a78bfa"}
+          d={pathData}
+          fill="none"
+          stroke={ds.color || "#000"}
+          strokeWidth={ds.thickness || 4}
+          strokeLinecap={ds.lineCap || "round"}
+          strokeLinejoin={ds.lineJoin || "round"}
+          strokeDasharray={ds.dashed ? "8 8" : "none"}
+          filter={isGlow ? `url(#${filterId})` : undefined}
         />
       </g>
     </svg>

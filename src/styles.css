@@ -1,4 +1,4 @@
-@import "tailwindcss" source(none);
+@import "tailwindcss";
 @source "../src";
 @import "tw-animate-css";
 @import "@xyflow/react/dist/style.css";
@@ -313,9 +313,7 @@
   filter: drop-shadow(0 0 6px color-mix(in oklab, var(--color-primary) 60%, transparent));
 }
 
-.react-flow__node.selected .shape-body:not(.is-draw) {
-  /* Selection styling handled by ShapeNode */
-}
+
 
 .shape-node.is-pending-source .shape-body {
   box-shadow:
@@ -398,5 +396,36 @@
 
 
 .react-flow__edge.updating {
-  opacity: 0 !important;
+  opacity: 0.5;
+}
+
+/* Smooth edge animations */
+@keyframes flow-dashed {
+  from {
+    stroke-dashoffset: 14;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes flow-dotted {
+  from {
+    stroke-dashoffset: 8;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes flow-default {
+  from {
+    stroke-dashoffset: 24;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
 }

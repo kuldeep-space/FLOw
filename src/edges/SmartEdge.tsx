@@ -651,7 +651,14 @@ export function SmartEdge(props: EdgeProps) {
           ...style,
           stroke: (data as any)?.color || "#a78bfa",
           strokeWidth: (data as any)?.width || 2,
-          strokeDasharray: (data as any)?.dashed ? "8 6" : (data as any)?.dotted ? "2 6" : "none",
+          strokeDasharray: (data as any)?.dashed ? "8 6" : (data as any)?.dotted ? "2 6" : props.animated ? "12 12" : "none",
+          animation: props.animated
+            ? (data as any)?.dashed
+              ? "flow-dashed 1.2s linear infinite"
+              : (data as any)?.dotted
+              ? "flow-dotted 0.8s linear infinite"
+              : "flow-default 1.5s linear infinite"
+            : undefined,
         }}
         markerEnd={markerEnd}
         markerStart={markerStart}

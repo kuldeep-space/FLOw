@@ -55,7 +55,7 @@ function ShapeNodeInner({ id, data, selected, width, height }: NodeProps<SN>) {
   const isSticky = data.kind === "sticky";
   const isText = data.kind === "text";
   const isImage = data.kind === "image";
-  const isDraw = data.kind === "draw" || data.kind === "highlighter";
+  const isDraw = data.kind === "draw" || data.kind === "pencil" || data.kind === "highlighter";
   const isConnectorMode = isConnectorTool(activeTool as never);
   const isPendingSource = pendingConnect?.nodeId === id;
 

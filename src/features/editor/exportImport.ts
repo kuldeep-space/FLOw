@@ -108,7 +108,7 @@ export function exportJSON() {
   const s = useEditor.getState();
   const doc = {
     version: 1,
-    kind: "flux-diagram",
+    kind: "portexa-diagram",
     projectName: s.projectName,
     nodes: s.nodes,
     edges: s.edges,

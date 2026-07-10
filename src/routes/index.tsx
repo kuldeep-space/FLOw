@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/db";
-import { Plus, FolderOpen, Search, Clock, Trash2 } from "lucide-react";
+import { Plus, FolderOpen, Search, Clock, Trash2, Github, Linkedin } from "lucide-react";
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -52,10 +52,10 @@ function Dashboard() {
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <header className="h-16 border-b border-border/50 flex items-center justify-between px-8 bg-background/50 backdrop-blur">
         <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-lg">F</span>
+          <div className="h-8 w-8 rounded-lg bg-transparent flex items-center justify-center overflow-hidden">
+            <img src="/portexa-logo.png" alt="Portexa Logo" className="w-full h-full object-cover" />
           </div>
-          <span className="font-semibold text-lg tracking-tight">Flux</span>
+          <span className="font-semibold text-lg tracking-tight">Portexa</span>
         </div>
 
         <div className="relative w-96">
@@ -69,14 +69,26 @@ function Dashboard() {
           />
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="h-9 w-9 rounded-full bg-muted border border-border flex items-center justify-center overflow-hidden">
-            <img
-              src="https://api.dicebear.com/7.x/avataaars/svg?seed=Flux"
-              alt="Avatar"
-              className="w-full h-full object-cover"
-            />
-          </div>
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <span>Created by <span className="font-medium text-foreground">Kuldeep</span></span>
+          <a
+            href="https://github.com/kuldeep-space"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 hover:bg-muted rounded-full transition-colors hover:text-foreground"
+            title="GitHub"
+          >
+            <Github className="w-4 h-4" />
+          </a>
+          <a
+            href="https://linkedin.com/in/kuldeep-space"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 hover:bg-muted rounded-full transition-colors hover:text-foreground"
+            title="LinkedIn"
+          >
+            <Linkedin className="w-4 h-4" />
+          </a>
         </div>
       </header>
 
