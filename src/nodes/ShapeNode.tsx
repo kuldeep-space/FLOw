@@ -30,10 +30,6 @@ function ShapeNodeInner({ id, data, selected, width, height }: NodeProps<SN>) {
   const setSelectedNodes = useEditor((s) => s.setSelectedNodes);
   const updateInternals = useUpdateNodeInternals();
   const [editing, setEditing] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const [localMouse, setLocalMouse] = useState<{ x: number; y: number } | null>(
-    null,
-  );
   const inputRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -99,18 +95,6 @@ function ShapeNodeInner({ id, data, selected, width, height }: NodeProps<SN>) {
         height: h,
         opacity: data.opacity,
         transform: `rotate(${data.rotation}deg)`,
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => {
-        setHovered(false);
-        setLocalMouse(null);
-      }}
-      onPointerMove={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        setLocalMouse({
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
       }}
       onDoubleClick={(e) => {
         if (data.locked || isImage || isConnectorMode) return;
