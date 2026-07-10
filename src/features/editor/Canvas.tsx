@@ -326,34 +326,20 @@ function CanvasInner() {
     (e: React.PointerEvent) => {
       const state = useEditor.getState();
       if (state.presenting) {
+        if (e.button === 2) {
+          // Right click clears ALL presentation annotations
+          setLaserStrokes([]);
+          setPresentationDrawStrokes([]);
+          setActiveLaser(null);
+          return;
+        }
+
         if (state.activeTool !== "pencil") {
-          if (e.button === 2) {
-            // Right click clears laser
-            setLaserStrokes([]);
-      setPresentationDrawStrokes([]);
-            setActiveLaser(null);
-            return;
-          } else if (e.button === 0) {
+          if (e.button === 0) {
             // Left click draws laser
             const pos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
             setActiveLaser([{ x: pos.x, y: pos.y }]);
             try { wrapperRef.current?.setPointerCapture(e.pointerId); } catch (err) {}
-            return;
-          }
-        } else {
-          if (e.button === 2) {
-            // Right click in presentation pencil mode clears all drawings
-            useEditor.getState().pushHistory();
-            useEditor.setState((s) => ({
-              nodes: s.nodes.filter((n) => {
-                if (n.type === "shape") {
-                  const kind = (n.data as any)?.kind;
-                  if (kind === "draw" || kind === "highlighter" || kind === "pencil") return false;
-                }
-                return true;
-              }),
-              isDirty: true,
-            }));
             return;
           }
         }

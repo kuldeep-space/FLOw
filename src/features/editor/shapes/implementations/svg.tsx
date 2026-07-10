@@ -424,6 +424,17 @@ export const ParallelogramShape: ShapeDefinition = {
   },
 };
 
+function getSimplePath(points: { x: number; y: number }[]): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y} L ${points[0].x} ${points[0].y}`;
+
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i++) {
+    d += ` L ${points[i].x} ${points[i].y}`;
+  }
+  return d;
+}
+
 export const DrawShape: ShapeDefinition = {
   ...RectangleShape,
   type: "draw",
@@ -440,7 +451,10 @@ export const DrawShape: ShapeDefinition = {
       const pts =
         (data.points as { x: number; y: number; pressure?: number }[]) || [];
       if (pts.length === 0) return null;
-      const pathData = getFreehandPath(pts, false, data.strokeWidth || 3);
+      const pathData = getSimplePath(pts);
+      const isGlow = data.glowIntensity && data.glowIntensity > 0;
+      const filterId = `neon-glow-${data.glowRadius || 10}-${data.glowIntensity || 0}-${data.glowOpacity ?? 1}`;
+      
       return (
         <svg
           width={w}
@@ -448,7 +462,17 @@ export const DrawShape: ShapeDefinition = {
           viewBox={`0 0 ${w} ${h}`}
           className="absolute inset-0 overflow-visible"
         >
-          <path d={pathData} fill={data.stroke || "#a78bfa"} />
+          <path 
+            d={pathData} 
+            fill="none" 
+            stroke={data.stroke || "#a78bfa"} 
+            strokeWidth={data.strokeWidth || 4}
+            strokeLinecap={data.lineCap || "round"}
+            strokeLinejoin={data.lineJoin || "round"}
+            filter={isGlow ? `url(#${filterId})` : undefined}
+            strokeDasharray={data.dashed ? "8 8" : "none"}
+            opacity={data.opacity ?? 1}
+          />
         </svg>
       );
     } catch (e) {
