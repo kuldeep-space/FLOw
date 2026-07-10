@@ -62,6 +62,7 @@ const cursorFor = (
 };
 
 function CanvasInner() {
+  const [presentationDrawStrokes, setPresentationDrawStrokes] = useState<{ id: string; points: { x: number; y: number; pressure?: number }[]; isHighlighter: boolean; ds: any }[]>([]);
   const [laserStrokes, setLaserStrokes] = useState<{ id: string; points: {x: number, y: number}[] }[]>([]);
   const [activeLaser, setActiveLaser] = useState<{x: number, y: number}[] | null>(null);
 
@@ -329,6 +330,7 @@ function CanvasInner() {
           if (e.button === 2) {
             // Right click clears laser
             setLaserStrokes([]);
+      setPresentationDrawStrokes([]);
             setActiveLaser(null);
             return;
           } else if (e.button === 0) {
@@ -605,21 +607,29 @@ function CanvasInner() {
       setIsDrawing(false);
       try {
         try { wrapperRef.current?.releasePointerCapture(e.pointerId); } catch (err) {}
-      } catch (err) {}
-
       if (activeDrawStroke && activeDrawStroke.length > 1) {
-        const start = activeDrawStroke[0];
-        const relativePoints = activeDrawStroke.map((p) => ({
-          x: p.x - start.x,
-          y: p.y - start.y,
-          pressure: p.pressure,
-        }));
-        const toolToUse = activeTool === "pencil" ? "draw" : activeTool;
-        addShape(
-          toolToUse as any,
-          { x: start.x, y: start.y },
-          { points: relativePoints },
-        );
+        if (presenting) {
+          const ds = useEditor.getState().drawSettings;
+          setPresentationDrawStrokes(prev => [...prev, {
+            id: `pres_draw_${Date.now()}`,
+            points: activeDrawStroke,
+            isHighlighter: activeTool === "highlighter",
+            ds: { ...ds }
+          }]);
+        } else {
+          const start = activeDrawStroke[0];
+          const relativePoints = activeDrawStroke.map((p) => ({
+            x: p.x - start.x,
+            y: p.y - start.y,
+            pressure: p.pressure,
+          }));
+          const toolToUse = activeTool === "pencil" ? "draw" : activeTool;
+          addShape(
+            toolToUse as any,
+            { x: start.x, y: start.y },
+            { points: relativePoints },
+          );
+        }
       }
       InteractionManager.end();
       setActiveDrawStroke(null);
@@ -904,9 +914,61 @@ function CanvasInner() {
 
       {/* Laser Pointer Overlay */}
       {presenting && (
-        <LaserStrokeOverlay strokes={laserStrokes} activeLaser={activeLaser} />
+        <>
+          <PresentationDrawOverlay strokes={presentationDrawStrokes} />
+          <LaserStrokeOverlay strokes={laserStrokes} activeLaser={activeLaser} />
+        </>
       )}
     </div>
+  );
+}
+
+function PresentationDrawOverlay({
+  strokes,
+}: {
+  strokes: { id: string; points: { x: number; y: number; pressure?: number }[]; isHighlighter: boolean; ds: any }[];
+}) {
+  const transform = useStore((s) => s.transform);
+
+  if (strokes.length === 0) return null;
+
+  return (
+    <svg className="pointer-events-none absolute inset-0 z-50 h-full w-full">
+      {strokes.map((stroke) => {
+        const ds = stroke.ds;
+        const isGlow = ds.glowIntensity && ds.glowIntensity > 0;
+        const filterId = `neon-glow-${ds.glowRadius || 10}-${ds.glowIntensity || 0}-${ds.glowOpacity ?? 1}`;
+
+        if (stroke.isHighlighter) {
+          const path = getFreehandPath(stroke.points, true, 3);
+          return (
+            <g key={stroke.id} transform={`translate(${transform[0]}, ${transform[1]}) scale(${transform[2]})`} opacity={ds.opacity ?? 1}>
+              <path
+                d={path}
+                fill={ds.color || "rgba(250, 204, 21, 0.4)"}
+                style={{ mixBlendMode: "multiply" }}
+              />
+            </g>
+          );
+        } else {
+          const path = getSimplePath(stroke.points);
+          return (
+            <g key={stroke.id} transform={`translate(${transform[0]}, ${transform[1]}) scale(${transform[2]})`} opacity={ds.opacity ?? 1}>
+              <path
+                d={path}
+                fill="none"
+                stroke={ds.color}
+                strokeWidth={ds.thickness || 4}
+                strokeLinecap={ds.lineCap || "round"}
+                strokeLinejoin={ds.lineJoin || "round"}
+                filter={isGlow ? `url(#${filterId})` : undefined}
+                strokeDasharray={ds.dashed ? "8 8" : "none"}
+              />
+            </g>
+          );
+        }
+      })}
+    </svg>
   );
 }
 

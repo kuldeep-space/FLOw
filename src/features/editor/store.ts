@@ -481,10 +481,14 @@ export const useEditor = create<EditorState>((set, get) => ({
       };
     }
     
+    const isDrawingTool = kind === "draw" || kind === "pencil" || kind === "highlighter";
     const node: ShapeNode = {
       id,
       type: "shape",
-      position: { x: pos.x - size.width / 2, y: pos.y - size.height / 2 },
+      position: { 
+        x: isDrawingTool ? pos.x : pos.x - size.width / 2, 
+        y: isDrawingTool ? pos.y : pos.y - size.height / 2 
+      },
       data: { ...defaultsFor(kind), ...drawExtra, ...extra },
       width: size.width,
       height: size.height,
