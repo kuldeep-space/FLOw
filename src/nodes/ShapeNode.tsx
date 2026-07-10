@@ -70,14 +70,20 @@ function ShapeNodeInner({ id, data, selected, width, height }: NodeProps<SN>) {
     : undefined;
 
   const shapeDef =
-    ShapeRegistry.get(data.kind) ?? ShapeRegistry.get("rectangle")!;
+    ShapeRegistry.get(data.kind) ?? ShapeRegistry.get("rectangle");
+
+  if (!shapeDef) {
+    console.warn(`Shape definition not found for kind: ${data.kind}`);
+    return null;
+  }
+
   const renderProps: ShapeRenderProps = {
     id,
     width: w,
     height: h,
     data,
-    selected,
-    hovered,
+    selected: !!selected,
+    hovered: false, // Handled via CSS hover state mostly
     isConnectorMode,
   };
 
