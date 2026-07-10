@@ -613,7 +613,7 @@ function CanvasInner() {
         const toolToUse = activeTool === "pencil" ? "draw" : activeTool;
         addShape(
           toolToUse as any,
-          { x: start.x + 90, y: start.y + 50 },
+          { x: start.x, y: start.y },
           { points: relativePoints },
         );
       }

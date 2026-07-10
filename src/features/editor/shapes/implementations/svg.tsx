@@ -436,20 +436,25 @@ export const DrawShape: ShapeDefinition = {
   supportsShadow: false,
   supportsBorderRadius: false,
   render: ({ width: w, height: h, data }: ShapeRenderProps) => {
-    const pts =
-      (data.points as { x: number; y: number; pressure?: number }[]) || [];
-    if (pts.length === 0) return null;
-    const pathData = getFreehandPath(pts, false, data.strokeWidth || 3);
-    return (
-      <svg
-        width={w}
-        height={h}
-        viewBox={`0 0 ${w} ${h}`}
-        className="absolute inset-0 overflow-visible"
-      >
-        <path d={pathData} fill={data.stroke || "#a78bfa"} />
-      </svg>
-    );
+    try {
+      const pts =
+        (data.points as { x: number; y: number; pressure?: number }[]) || [];
+      if (pts.length === 0) return null;
+      const pathData = getFreehandPath(pts, false, data.strokeWidth || 3);
+      return (
+        <svg
+          width={w}
+          height={h}
+          viewBox={`0 0 ${w} ${h}`}
+          className="absolute inset-0 overflow-visible"
+        >
+          <path d={pathData} fill={data.stroke || "#a78bfa"} />
+        </svg>
+      );
+    } catch (e) {
+      console.error("Failed to render draw shape", e);
+      return null;
+    }
   },
 };
 
@@ -458,21 +463,26 @@ export const HighlighterShape: ShapeDefinition = {
   type: "highlighter",
   name: "Highlighter",
   render: ({ width: w, height: h, data }: ShapeRenderProps) => {
-    const pts =
-      (data.points as { x: number; y: number; pressure?: number }[]) || [];
-    if (pts.length === 0) return null;
-    const pathData = getFreehandPath(pts, true, data.strokeWidth || 3);
-    return (
-      <svg
-        width={w}
-        height={h}
-        viewBox={`0 0 ${w} ${h}`}
-        className="absolute inset-0 overflow-visible"
-        style={{ mixBlendMode: "multiply" }}
-      >
-        <path d={pathData} fill={data.stroke || "#a78bfa"} />
-      </svg>
-    );
+    try {
+      const pts =
+        (data.points as { x: number; y: number; pressure?: number }[]) || [];
+      if (pts.length === 0) return null;
+      const pathData = getFreehandPath(pts, true, data.strokeWidth || 3);
+      return (
+        <svg
+          width={w}
+          height={h}
+          viewBox={`0 0 ${w} ${h}`}
+          className="absolute inset-0 overflow-visible"
+          style={{ mixBlendMode: "multiply" }}
+        >
+          <path d={pathData} fill={data.stroke || "rgba(250, 204, 21, 0.4)"} />
+        </svg>
+      );
+    } catch (e) {
+      console.error("Failed to render highlighter shape", e);
+      return null;
+    }
   },
 };
 
