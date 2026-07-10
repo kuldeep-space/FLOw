@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
 
 import appCss from "../styles.css?url";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 
 
 function NotFoundComponent() {
@@ -131,7 +132,9 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={200}>
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </TooltipProvider>
     </QueryClientProvider>
   );

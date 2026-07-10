@@ -335,7 +335,7 @@ function CanvasInner() {
             // Left click draws laser
             const pos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
             setActiveLaser([{ x: pos.x, y: pos.y }]);
-            wrapperRef.current?.setPointerCapture(e.pointerId);
+            try { wrapperRef.current?.setPointerCapture(e.pointerId); } catch (err) {}
             return;
           }
         } else {
@@ -372,14 +372,16 @@ function CanvasInner() {
       ) {
         setActiveDrawStroke([{ x: pos.x, y: pos.y, pressure: e.pressure }]);
         setIsDrawing(true);
-        wrapperRef.current?.setPointerCapture(e.pointerId);
+        try {
+          try { wrapperRef.current?.setPointerCapture(e.pointerId); } catch (err) {}
+        } catch (err) {}
         return;
       }
 
       if (activeTool === "eraser") {
         setIsDrawing(true);
         useEditor.getState().pushHistory();
-        wrapperRef.current?.setPointerCapture(e.pointerId);
+        try { wrapperRef.current?.setPointerCapture(e.pointerId); } catch (err) {}
         eraseAtPosition(pos);
         return;
       }
@@ -407,7 +409,7 @@ function CanvasInner() {
         }));
         useEditor.getState().setInteractionState("DRAWING_SHAPE");
         setIsDrawing(true);
-        wrapperRef.current?.setPointerCapture(e.pointerId);
+        try { wrapperRef.current?.setPointerCapture(e.pointerId); } catch (err) {}
         return;
       }
 
@@ -451,7 +453,7 @@ function CanvasInner() {
         useEditor.getState().setInteractionState("DRAWING_CONNECTOR");
         setDraftConnector({ sourceId, targetId });
         setIsDrawing(true);
-        wrapperRef.current?.setPointerCapture(e.pointerId);
+        try { wrapperRef.current?.setPointerCapture(e.pointerId); } catch (err) {}
         return;
       }
     },
@@ -591,7 +593,7 @@ function CanvasInner() {
   const onPointerUp = useCallback(
     (e: React.PointerEvent) => {
       if (activeLaser) {
-        wrapperRef.current?.releasePointerCapture(e.pointerId);
+        try { wrapperRef.current?.releasePointerCapture(e.pointerId); } catch (err) {}
         if (activeLaser.length > 1) {
           setLaserStrokes((prev) => [...prev, { id: `laser_${Date.now()}`, points: activeLaser }]);
         }
@@ -601,7 +603,9 @@ function CanvasInner() {
 
       if (!isDrawing) return;
       setIsDrawing(false);
-      wrapperRef.current?.releasePointerCapture(e.pointerId);
+      try {
+        try { wrapperRef.current?.releasePointerCapture(e.pointerId); } catch (err) {}
+      } catch (err) {}
 
       if (activeDrawStroke && activeDrawStroke.length > 1) {
         const start = activeDrawStroke[0];
@@ -1028,46 +1032,43 @@ function ActiveStrokeOverlay({
 }) {
   const transform = useStore((s) => s.transform);
   const ds = useEditor((s) => s.drawSettings);
-  
-  if (isHighlighter) {
-    const path = getFreehandPath(points, true, 3);
+
+  try {
+    if (isHighlighter) {
+      const path = getFreehandPath(points, true, 3);
+      return (
+        <svg className="pointer-events-none absolute inset-0 z-50 h-full w-full" style={{ mixBlendMode: "multiply" }}>
+          <g transform={`translate(${transform[0]}, ${transform[1]}) scale(${transform[2]})`}>
+            <path d={path} fill={ds.color || "rgba(250, 204, 21, 0.4)"} />
+          </g>
+        </svg>
+      );
+    }
+
+    const pathData = getSimplePath(points);
+    const isGlow = ds.glowIntensity && ds.glowIntensity > 0;
+    const filterId = `neon-glow-${ds.glowRadius || 10}-${ds.glowIntensity || 0}-${ds.glowOpacity ?? 1}`;
+
     return (
-      <svg
-        className="pointer-events-none absolute inset-0 z-50 h-full w-full"
-        style={{ mixBlendMode: "multiply" }}
-      >
-        <g transform={`translate(${transform[0]}, ${transform[1]}) scale(${transform[2]})`}>
-          <path d={path} fill="rgba(250, 204, 21, 0.4)" />
+      <svg className="pointer-events-none absolute inset-0 z-50 h-full w-full">
+        <g transform={`translate(${transform[0]}, ${transform[1]}) scale(${transform[2]})`} opacity={ds.opacity ?? 1}>
+          <path
+            d={pathData}
+            fill="none"
+            stroke={ds.color || "#000"}
+            strokeWidth={ds.thickness || 4}
+            strokeLinecap={ds.lineCap || "round"}
+            strokeLinejoin={ds.lineJoin || "round"}
+            strokeDasharray={ds.dashed ? "8 8" : "none"}
+            filter={isGlow ? `url(#${filterId})` : undefined}
+          />
         </g>
       </svg>
     );
+  } catch (e) {
+    console.error("ActiveStrokeOverlay error:", e);
+    return null;
   }
-
-  const pathData = getSimplePath(points);
-  const isGlow = ds.glowIntensity && ds.glowIntensity > 0;
-  const filterId = `neon-glow-${ds.glowRadius || 10}-${ds.glowIntensity || 0}-${ds.glowOpacity ?? 1}`;
-  
-  return (
-    <svg
-      className="pointer-events-none absolute inset-0 z-50 h-full w-full"
-    >
-      <g
-        transform={`translate(${transform[0]}, ${transform[1]}) scale(${transform[2]})`}
-        opacity={ds.opacity ?? 1}
-      >
-        <path
-          d={pathData}
-          fill="none"
-          stroke={ds.color || "#000"}
-          strokeWidth={ds.thickness || 4}
-          strokeLinecap={ds.lineCap || "round"}
-          strokeLinejoin={ds.lineJoin || "round"}
-          strokeDasharray={ds.dashed ? "8 8" : "none"}
-          filter={isGlow ? `url(#${filterId})` : undefined}
-        />
-      </g>
-    </svg>
-  );
 }
 
 function CustomConnectionLine({
