@@ -607,6 +607,7 @@ function CanvasInner() {
       setIsDrawing(false);
       try {
         try { wrapperRef.current?.releasePointerCapture(e.pointerId); } catch (err) {}
+      } catch (err) {}
       if (activeDrawStroke && activeDrawStroke.length > 1) {
         if (presenting) {
           const ds = useEditor.getState().drawSettings;
