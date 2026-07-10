@@ -50,7 +50,7 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <header className="h-16 border-b border-border/50 flex items-center justify-between px-8 bg-background/50 backdrop-blur">
+      <header className="relative h-16 border-b border-border/50 flex items-center justify-between px-8 bg-background/50 backdrop-blur">
         <div className="flex items-center gap-3">
           <div className="h-8 w-8 rounded-lg bg-transparent flex items-center justify-center overflow-hidden">
             <img src="/portexa-logo.png" alt="Portexa Logo" className="w-full h-full object-cover" />
@@ -58,7 +58,7 @@ function Dashboard() {
           <span className="font-semibold text-lg tracking-tight">Portexa</span>
         </div>
 
-        <div className="relative w-96">
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
@@ -69,27 +69,7 @@ function Dashboard() {
           />
         </div>
 
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <span>Created by <span className="font-medium text-foreground">Kuldeep</span></span>
-          <a
-            href="https://github.com/kuldeep-space"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-2 hover:bg-muted rounded-full transition-colors hover:text-foreground"
-            title="GitHub"
-          >
-            <Github className="w-4 h-4" />
-          </a>
-          <a
-            href="https://linkedin.com/in/kuldeep-space"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-2 hover:bg-muted rounded-full transition-colors hover:text-foreground"
-            title="LinkedIn"
-          >
-            <Linkedin className="w-4 h-4" />
-          </a>
-        </div>
+
       </header>
 
       <main className="flex-1 p-8 max-w-7xl mx-auto w-full">

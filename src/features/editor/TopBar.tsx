@@ -31,6 +31,7 @@ import {
   copyPNGToClipboard,
   importJSONFile,
   openFileDialog,
+  captureThumbnail,
 } from "./exportImport";
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -208,8 +209,13 @@ export function TopBar() {
     >
       <div className="flex items-center gap-2 pr-1">
         <IconBtn
-          onClick={() => {
-            useEditor.getState().saveProject();
+          onClick={async () => {
+            try {
+              const url = await captureThumbnail();
+              await useEditor.getState().saveProject(url);
+            } catch (e) {
+              await useEditor.getState().saveProject();
+            }
             navigate({ to: "/" });
           }}
           title="Back to Dashboard"

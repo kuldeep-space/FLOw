@@ -204,7 +204,7 @@ interface EditorState {
   loadSnapshot: (snap: HistorySnapshot & { projectName?: string }) => void;
   markSaved: () => void;
   loadProject: (id: string) => Promise<void>;
-  saveProject: () => Promise<void>;
+  saveProject: (thumbnail?: string) => Promise<void>;
 }
 
 const labelFor = (kind: ShapeKind): string => {
@@ -1126,11 +1126,12 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
 
-  saveProject: async () => {
+  saveProject: async (thumbnail?: string) => {
     const s = get();
     if (!s.currentProjectId) return;
     const saveNodes = s.nodes.filter((n) => n.type !== "anchor") as ShapeNode[];
-    await db.projects.update(s.currentProjectId, {
+    
+    const updateData: any = {
       name: s.projectName,
       lastModified: Date.now(),
       objectCount: saveNodes.length + s.edges.length,
@@ -1140,7 +1141,13 @@ export const useEditor = create<EditorState>((set, get) => ({
         zoom: s.zoom,
         cursor: s.cursor,
       },
-    });
+    };
+    
+    if (thumbnail !== undefined) {
+      updateData.thumbnail = thumbnail;
+    }
+
+    await db.projects.update(s.currentProjectId, updateData);
     set({ isDirty: false, lastSavedAt: Date.now() });
   },
 }));

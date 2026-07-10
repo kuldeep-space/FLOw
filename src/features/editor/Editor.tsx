@@ -15,6 +15,7 @@ import {
   importImageFile,
   importJSONFile,
   openFileDialog,
+  captureThumbnail,
 } from "./exportImport";
 import { ContextMenu } from "./ContextMenu";
 
@@ -117,8 +118,15 @@ function EditorInner() {
       }
       if (mod && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        useEditor.getState().saveProject();
-        toast.success("Saved");
+        captureThumbnail()
+          .then((url) => {
+            useEditor.getState().saveProject(url);
+            toast.success("Saved with thumbnail");
+          })
+          .catch(() => {
+            useEditor.getState().saveProject();
+            toast.success("Saved");
+          });
         return;
       }
       if (mod && e.key.toLowerCase() === "e") {

@@ -58,6 +58,10 @@ async function captureNode(
     : await toSvg(el, commonOpts);
 }
 
+export async function captureThumbnail(): Promise<string> {
+  return await captureNode({ scale: 0.5 }, "png");
+}
+
 export async function exportPNG(opts: ExportOpts = {}) {
   try {
     const url = await captureNode(opts, "png");
